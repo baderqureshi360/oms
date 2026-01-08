@@ -268,68 +268,37 @@
 
   @media print {
     /* Hide everything by default */
-    body * {
+    * {
       visibility: hidden;
     }
     
-    /* Explicitly hide all dialogs, modals, overlays, and portals */
+    /* Hide all dialogs, modals, overlays, and non-printable content */
     [data-radix-portal],
     [data-radix-dialog-content],
     [data-radix-dialog-overlay],
     [role="dialog"],
     [role="alertdialog"],
-    .dialog-overlay,
-    .dialog-content,
-    [class*="Dialog"],
-    [class*="dialog"],
-    [id*="radix"],
-    [id*="dialog"],
-    /* Hide receipt preview in modal - hide the entire dialog and its contents */
-    .receipt-preview,
-    .receipt-preview *,
     .no-print,
-    .no-print * {
-      visibility: hidden !important;
+    .no-print *,
+    header,
+    nav,
+    aside,
+    footer,
+    button,
+    .btn-checkout,
+    .cart-panel,
+    .product-card {
       display: none !important;
-      opacity: 0 !important;
+      visibility: hidden !important;
     }
     
-    /* Hide ALL content inside dialogs/portals completely - prevents duplicate printing */
-    [data-radix-portal] *,
-    [data-radix-dialog-content] *,
-    [role="dialog"] *,
-    [role="alertdialog"] * {
-      visibility: hidden !important;
-      display: none !important;
-      opacity: 0 !important;
-    }
-    
-    /* Hide ALL receipt-content by default - must come before container rules */
-    .receipt-content {
-      visibility: hidden !important;
-      display: none !important;
-      opacity: 0 !important;
-    }
-    
-    /* Explicitly hide receipt-content in dialogs/portals to prevent duplicates */
-    [role="dialog"] .receipt-content,
-    [role="alertdialog"] .receipt-content,
-    [data-radix-dialog-content] .receipt-content,
-    [data-radix-portal] .receipt-content,
-    .receipt-preview .receipt-content {
-      visibility: hidden !important;
-      display: none !important;
-      opacity: 0 !important;
-    }
-    
-    /* Show only the receipt print container and its contents - MUST come after hide rules */
-    /* This ensures ONLY one receipt prints by overriding all hide rules */
+    /* Show ONLY the receipt print container */
     #receipt-print-container {
       position: fixed !important;
       left: 0 !important;
       top: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
+      width: 100vw !important;
+      height: 100vh !important;
       margin: 0 !important;
       padding: 0 !important;
       background: white !important;
@@ -339,81 +308,34 @@
       opacity: 1 !important;
     }
     
-    /* Show all children of receipt container - override any hide rules */
+    /* Show all content inside receipt container */
     #receipt-print-container * {
       visibility: visible !important;
       opacity: 1 !important;
     }
     
-    /* Ensure container and its direct children are displayed correctly */
-    #receipt-print-container .print-receipt,
-    #receipt-print-container .receipt-content {
-      display: block !important;
-      visibility: visible !important;
-      opacity: 1 !important;
-    }
-    
-    /* Show all nested elements within receipt content */
-    #receipt-print-container .receipt-content *,
-    #receipt-print-container .receipt-header,
-    #receipt-print-container .receipt-header *,
-    #receipt-print-container .receipt-items,
-    #receipt-print-container .receipt-items *,
-    #receipt-print-container .receipt-item,
-    #receipt-print-container .receipt-item *,
-    #receipt-print-container .receipt-totals,
-    #receipt-print-container .receipt-totals *,
-    #receipt-print-container .receipt-footer,
-    #receipt-print-container .receipt-footer * {
-      visibility: visible !important;
-      opacity: 1 !important;
-    }
-    
-    /* Ensure all elements inside receipt are visible and properly displayed */
-    #receipt-print-container span,
-    #receipt-print-container p,
-    #receipt-print-container div,
-    #receipt-print-container h1,
-    #receipt-print-container h2,
-    #receipt-print-container h3 {
-      visibility: visible !important;
-      opacity: 1 !important;
-    }
-    
-    /* Preserve flexbox layout for receipt items */
-    #receipt-print-container .flex {
-      display: flex !important;
-      visibility: visible !important;
-    }
-    
-    /* Ensure spans in flex containers are visible */
-    #receipt-print-container .flex span {
-      display: inline !important;
-      visibility: visible !important;
-    }
-    
-    /* Page settings - single page with margins */
+    /* Page settings - optimize for receipt printing */
     @page {
-      size: letter portrait;
-      margin: 0.5cm;
+      size: A4 portrait;
+      margin: 1cm;
     }
     
     html, body {
-      width: 50% !important;
+      width: 100% !important;
       margin: 0 !important;
       padding: 0 !important;
       height: auto !important;
       background: white !important;
+      overflow: visible !important;
     }
     
-    /* Receipt container - center on page, prevent breaks */
+    /* Receipt wrapper - center on page */
     #receipt-print-container .print-receipt {
       position: relative !important;
       left: auto !important;
       top: auto !important;
       width: 100% !important;
       height: auto !important;
-      min-height: auto !important;
       margin: 0 auto !important;
       padding: 0 !important;
       display: flex !important;
@@ -421,16 +343,9 @@
       align-items: flex-start !important;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
-      page-break-after: avoid !important;
-      break-after: avoid !important;
-      page-break-before: avoid !important;
-      break-before: avoid !important;
-      overflow: visible !important;
-      visibility: visible !important;
-      opacity: 1 !important;
     }
     
-    /* Receipt content - prevent all breaks and force single page fit */
+    /* Receipt content - single page, prevent breaks */
     #receipt-print-container .receipt-content {
       page-break-inside: avoid !important;
       break-inside: avoid !important;
@@ -440,108 +355,52 @@
       break-before: avoid !important;
       orphans: 999 !important;
       widows: 999 !important;
-      max-height: calc(100vh - 1cm) !important;
-      overflow: hidden !important;
-      transform-origin: top center;
       margin: 0 auto !important;
-      padding: 0.75rem !important;
+      padding: 1rem !important;
       box-sizing: border-box !important;
       width: 300px !important;
+      max-width: 300px !important;
       height: auto !important;
       min-height: auto !important;
-      visibility: visible !important;
       display: block !important;
+      visibility: visible !important;
       opacity: 1 !important;
+      background: white !important;
+      color: black !important;
     }
     
-    /* Prevent header from breaking or repeating */
-    .receipt-header {
+    /* Prevent all receipt sections from breaking */
+    #receipt-print-container .receipt-header,
+    #receipt-print-container .receipt-items,
+    #receipt-print-container .receipt-item,
+    #receipt-print-container .receipt-totals,
+    #receipt-print-container .receipt-footer {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
       page-break-before: avoid !important;
       break-before: avoid !important;
       page-break-after: avoid !important;
       break-after: avoid !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
       orphans: 999 !important;
       widows: 999 !important;
-      padding-bottom: 0.75rem !important;
-      margin-bottom: 0.75rem !important;
     }
     
-    /* Prevent items section from breaking */
-    .receipt-items {
-      page-break-before: avoid !important;
-      break-before: avoid !important;
-      page-break-after: avoid !important;
-      break-after: avoid !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-      orphans: 999 !important;
-      widows: 999 !important;
-      padding-bottom: 0.75rem !important;
-      margin-bottom: 0.75rem !important;
+    /* Ensure all text elements are visible */
+    #receipt-print-container p,
+    #receipt-print-container span,
+    #receipt-print-container div,
+    #receipt-print-container h1,
+    #receipt-print-container h2,
+    #receipt-print-container h3 {
+      visibility: visible !important;
+      opacity: 1 !important;
+      color: black !important;
     }
     
-    /* Prevent individual items from breaking */
-    .receipt-item {
-      page-break-before: avoid !important;
-      break-before: avoid !important;
-      page-break-after: avoid !important;
-      break-after: avoid !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-      orphans: 999 !important;
-      widows: 999 !important;
-      margin-bottom: 0.5rem !important;
-    }
-    
-    /* Prevent totals from breaking */
-    .receipt-totals {
-      page-break-before: avoid !important;
-      break-before: avoid !important;
-      page-break-after: avoid !important;
-      break-after: avoid !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-      orphans: 999 !important;
-      widows: 999 !important;
-      margin-bottom: 0.75rem !important;
-    }
-    
-    /* Prevent footer from breaking */
-    .receipt-footer {
-      page-break-before: avoid !important;
-      break-before: avoid !important;
-      page-break-after: avoid !important;
-      break-after: avoid !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-      orphans: 999 !important;
-      widows: 999 !important;
-      padding-top: 0.75rem !important;
-    }
-    
-    /* Prevent ALL automatic page breaks in receipt elements */
-    .print-receipt * {
-      page-break-before: avoid !important;
-      break-before: avoid !important;
-      page-break-after: avoid !important;
-      break-after: avoid !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-    }
-    
-    /* Ensure paragraphs and text don't break */
-    .print-receipt p,
-    .print-receipt span,
-    .print-receipt div,
-    .print-receipt h1,
-    .print-receipt h2,
-    .print-receipt h3 {
-      orphans: 999 !important;
-      widows: 999 !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
+    /* Preserve flexbox layout */
+    #receipt-print-container .flex {
+      display: flex !important;
+      visibility: visible !important;
     }
   }
 }

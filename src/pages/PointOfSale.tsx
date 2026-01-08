@@ -1,12 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { BarcodeScanner } from '@/components/pos/BarcodeScanner';
 import { CartItem } from '@/components/pos/CartItem';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useProducts } from '@/hooks/useProducts';
+import { useProducts, type Product as ProductType } from '@/hooks/useProducts';
 import { useSales } from '@/hooks/useSales';
 import { useReceipt } from '@/contexts/ReceiptContext';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -14,13 +13,11 @@ import { formatPKR } from '@/lib/currency';
 import { toast } from 'sonner';
 import { CreditCard, Banknote, Smartphone, ShoppingBag, Trash2, Printer, Package, AlertTriangle, Percent, Search, X } from 'lucide-react';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { ReceiptPrint } from '@/components/pos/ReceiptPrint';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog';
 import {
@@ -52,9 +49,9 @@ export default function PointOfSale() {
   const [pendingPaymentMethod, setPendingPaymentMethod] = useState<'cash' | 'card' | 'mobile' | null>(null);
   const [search, setSearch] = useState('');
   const [dismissedExpiringAlert, setDismissedExpiringAlert] = useState(false);
-  const { products, batches, getProductByBarcode, getProductStock, getAvailableBatches, getExpiringBatches, refetch } = useProducts();
+  const { products, getProductByBarcode, getProductStock, getAvailableBatches, getExpiringBatches, refetch } = useProducts();
   const { processSale } = useSales();
-  const { receiptData, setReceiptData, setShowReceipt } = useReceipt();
+  const { receiptData, setReceiptData } = useReceipt();
   
   // Debounce search input to reduce filtering operations
   const debouncedSearch = useDebounce(search, 300);
@@ -83,7 +80,7 @@ export default function PointOfSale() {
         const matchesName = product.name?.toLowerCase().includes(searchLower) || false;
         const matchesBarcode = product.barcode?.toLowerCase().includes(searchLower) || false;
         // Check for salt_formula if it exists on the product (for database products)
-        const matchesSaltFormula = (product as any).salt_formula?.toLowerCase().includes(searchLower) || false;
+        const matchesSaltFormula = (product as ProductType).salt_formula?.toLowerCase().includes(searchLower) || false;
         
         if (!matchesName && !matchesBarcode && !matchesSaltFormula) {
           return false;
@@ -124,7 +121,7 @@ export default function PointOfSale() {
     }
     
     // Get rack location if available
-    const rackLocation = (product as any).rack?.name || (product as any).rackName || 'N/A';
+    const rackLocation = (product as ProductType).rack?.name || 'N/A';
     
     // Get available batches once to avoid duplicate calls
     const availableBatchesForPrice = getAvailableBatches(product.id);
@@ -640,30 +637,41 @@ export default function PointOfSale() {
           setReceiptData(null);
         }
       }}>
-        <DialogContent className="max-w-fit w-[95vw] sm:w-auto max-h-[90vh] overflow-y-auto no-print">
+        <DialogContent className="max-w-md w-[95vw] sm:w-auto max-h-[90vh] overflow-y-auto no-print">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Printer className="w-5 h-5" />
-              Sale Receipt – Ready for printing
+              Sale Completed Successfully
             </DialogTitle>
+            <DialogDescription>
+              Your receipt is ready to print. Click the button below to print it.
+            </DialogDescription>
           </DialogHeader>
           
-          <div className="flex flex-col items-center">
-            {/* Receipt Preview - shown in modal but NOT printed */}
+          <div className="flex flex-col items-center space-y-4 py-4">
+            {/* Simple receipt summary - NOT the actual receipt component */}
             {receiptData && (
-              <div className="receipt-preview no-print mb-4 border border-border rounded-lg overflow-hidden bg-white shadow-lg">
-                <ReceiptPrint
-                  items={receiptData.items}
-                  total={receiptData.total}
-                  discount={receiptData.discount}
-                  finalTotal={receiptData.finalTotal}
-                  paymentMethod={receiptData.paymentMethod}
-                  saleId={receiptData.saleId}
-                />
+              <div className="w-full space-y-3 p-4 bg-muted/50 rounded-lg border border-border">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Receipt #:</span>
+                  <span className="text-sm font-semibold">{receiptData.saleId}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Items:</span>
+                  <span className="text-sm font-semibold">{receiptData.items.length}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Total:</span>
+                  <span className="text-lg font-bold text-primary">{formatPKR(receiptData.finalTotal)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Payment:</span>
+                  <span className="text-sm font-semibold capitalize">{receiptData.paymentMethod}</span>
+                </div>
               </div>
             )}
             
-            <Button onClick={handlePrint} className="mt-4 w-full no-print">
+            <Button onClick={handlePrint} className="w-full no-print">
               <Printer className="w-4 h-4 mr-2" />
               Print Receipt
             </Button>

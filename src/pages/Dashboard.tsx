@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { TrendingUp, Package, AlertTriangle, Clock, Banknote, Layers, X } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
-import { usePharmacyStore } from '@/store/pharmacyStore';
+import { useProducts } from '@/hooks/useProducts';
+import { useSales } from '@/hooks/useSales';
 import { formatPKR } from '@/lib/currency';
 import { format, parseISO, startOfToday } from 'date-fns';
 import {
@@ -16,7 +17,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 
 export default function Dashboard() {
-  const { products, sales, getProductStock, getExpiringBatches, getExpiredBatches } = usePharmacyStore();
+  const { products, getProductStock, getExpiringBatches, getExpiredBatches } = useProducts();
+  const { sales } = useSales();
   const today = startOfToday();
   const [dismissedExpiredAlert, setDismissedExpiredAlert] = useState(false);
 
@@ -25,18 +27,18 @@ export default function Dashboard() {
 
   const stats = useMemo(() => {
     const safeSales = Array.isArray(sales) ? sales : [];
-    const safeProducts = Array.isArray(products) ? products : [];
+    const safeProducts = Array.isArray(products) ? products.filter(p => p.is_active !== false) : [];
     const safeExpiringBatches = Array.isArray(expiringBatches) ? expiringBatches : [];
     const safeExpiredBatches = Array.isArray(expiredBatches) ? expiredBatches : [];
 
     const todaySales = safeSales
-      .filter((sale) => sale && sale.createdAt && format(new Date(sale.createdAt), 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd'))
+      .filter((sale) => sale && sale.created_at && format(new Date(sale.created_at), 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd'))
       .reduce((sum, sale) => sum + (sale?.total || 0), 0);
 
     const lowStockProducts = safeProducts.filter((p) => {
       if (!p || !p.id) return false;
       const stock = getProductStock(p.id);
-      return stock <= (p.minStock || 0) && stock > 0;
+      return stock <= (p.min_stock || 0) && stock > 0;
     });
 
     const outOfStockProducts = safeProducts.filter((p) => {
@@ -59,10 +61,10 @@ export default function Dashboard() {
   const recentSales = useMemo(() => {
     const safeSales = Array.isArray(sales) ? sales : [];
     return [...safeSales]
-      .filter((sale) => sale && sale.createdAt)
+      .filter((sale) => sale && sale.created_at)
       .sort((a, b) => {
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
         return timeB - timeA;
       })
       .slice(0, 5);
@@ -159,7 +161,7 @@ export default function Dashboard() {
                           <Badge variant="destructive">{getProductStock(product.id)}</Badge>
                         </TableCell>
                         <TableCell className="text-right text-muted-foreground">
-                          {product.minStock ?? 0}
+                          {product.min_stock ?? 0}
                         </TableCell>
                       </TableRow>
                     );
@@ -198,18 +200,18 @@ export default function Dashboard() {
                 <TableBody>
                   {expiringBatches.slice(0, 5).map((batch) => {
                     if (!batch || !batch.id) return null;
-                    const product = products.find(p => p && p.id === batch.productId);
+                    const product = products.find(p => p && p.id === batch.product_id);
                     return (
                       <TableRow key={batch.id}>
                         <TableCell>
                           <div>
                             <p className="font-medium">{product?.name || 'Unknown Product'}</p>
-                            <p className="text-xs text-muted-foreground font-mono">{batch.batchNumber || 'N/A'}</p>
+                            <p className="text-xs text-muted-foreground font-mono">{batch.batch_number || 'N/A'}</p>
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <Badge className="bg-warning text-warning-foreground">
-                            {batch.expiryDate ? format(parseISO(batch.expiryDate), 'MMM d, yyyy') : 'N/A'}
+                            {batch.expiry_date ? format(parseISO(batch.expiry_date), 'MMM d, yyyy') : 'N/A'}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right text-muted-foreground">
@@ -260,11 +262,11 @@ export default function Dashboard() {
                         <TableCell>{Array.isArray(sale.items) ? sale.items.length : 0} items</TableCell>
                         <TableCell>
                           <Badge variant="outline" className="capitalize">
-                            {sale.paymentMethod || 'N/A'}
+                            {sale.payment_method || 'N/A'}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {sale.createdAt ? format(new Date(sale.createdAt), 'MMM d, h:mm a') : 'N/A'}
+                          {sale.created_at ? format(new Date(sale.created_at), 'MMM d, h:mm a') : 'N/A'}
                         </TableCell>
                         <TableCell className="text-right font-semibold text-primary">
                           {formatPKR(sale.total || 0)}
