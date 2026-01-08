@@ -39,13 +39,14 @@ import { format, parseISO, isBefore, addDays, startOfToday } from 'date-fns';
 import { toast } from 'sonner';
 
 export default function Products() {
-  const { products, batches, loading, addProduct, updateProduct, disableProduct, getProductStock, getProductBatches, getProductByBarcode } = useProducts();
+  const { products, batches, loading, addProduct, updateProduct, disableProduct, enableProduct, getProductStock, getProductBatches, getProductByBarcode } = useProducts();
   const { racks } = useRacks();
   const [search, setSearch] = useState('');
   const [selectedRackId, setSelectedRackId] = useState<string>('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [enableId, setEnableId] = useState<string | null>(null);
   const [viewBatchesId, setViewBatchesId] = useState<string | null>(null);
   const [scannedBarcode, setScannedBarcode] = useState<string>('');
 
@@ -77,12 +78,12 @@ export default function Products() {
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
       if (!product) return false;
-      
+
       // Apply rack filter
       if (selectedRackId && product.rack_id !== selectedRackId) {
         return false;
       }
-      
+
       // Apply search filter
       if (debouncedSearch && debouncedSearch.trim() !== '') {
         const searchLower = debouncedSearch.toLowerCase().trim();
@@ -90,12 +91,12 @@ export default function Products() {
         const matchesBarcode = product.barcode?.toLowerCase().includes(searchLower) || false;
         const matchesCategory = product.category?.toLowerCase().includes(searchLower) || false;
         const matchesSaltFormula = product.salt_formula?.toLowerCase().includes(searchLower) || false;
-        
+
         if (!matchesName && !matchesBarcode && !matchesCategory && !matchesSaltFormula) {
           return false;
         }
       }
-      
+
       return true;
     });
   }, [products, selectedRackId, debouncedSearch]);
@@ -139,6 +140,19 @@ export default function Products() {
         // UI updates immediately via useProducts hook state management
       } else {
         toast.error('Failed to disable product. Please try again.');
+      }
+    }
+  };
+
+  const handleEnable = async () => {
+    if (enableId) {
+      const success = await enableProduct(enableId);
+      if (success) {
+        toast.success('Product enabled successfully');
+        setEnableId(null);
+        // UI updates immediately via useProducts hook state management
+      } else {
+        toast.error('Failed to enable product. Please try again.');
       }
     }
   };
@@ -190,8 +204,8 @@ export default function Products() {
                 />
               </div>
               <div className="flex items-center gap-2 w-full sm:w-auto sm:min-w-[200px]">
-                <Select 
-                  value={selectedRackId || undefined} 
+                <Select
+                  value={selectedRackId || undefined}
                   onValueChange={(value) => {
                     if (value && value.trim() !== '') {
                       setSelectedRackId(value);
@@ -209,8 +223,8 @@ export default function Products() {
                       .map((rack) => (
                         <SelectItem key={rack.id} value={rack.id}>
                           <div className="flex items-center gap-2">
-                            <div 
-                              className="w-3 h-3 rounded-full" 
+                            <div
+                              className="w-3 h-3 rounded-full"
                               style={{ backgroundColor: rack.color || '#10b981' }}
                             />
                             {rack.name}
@@ -273,15 +287,25 @@ export default function Products() {
                       >
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => setDeleteId(product.id)}
-                        disabled={product.is_active === false}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {product.is_active === false ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-green-600 hover:text-green-600 hover:bg-green-600/10"
+                          onClick={() => setEnableId(product.id)}
+                        >
+                          <Package className="w-4 h-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => setDeleteId(product.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
@@ -299,11 +323,11 @@ export default function Products() {
                       <span className="text-muted-foreground">Rack:</span>
                       <div className="mt-0.5">
                         {product.rack ? (
-                          <Badge 
-                            variant="outline" 
-                            style={{ 
+                          <Badge
+                            variant="outline"
+                            style={{
                               borderColor: product.rack.color,
-                              color: product.rack.color 
+                              color: product.rack.color
                             }}
                             className="text-xs"
                           >
@@ -346,113 +370,123 @@ export default function Products() {
           {/* Desktop Table Layout */}
           <div className="hidden md:block overflow-x-auto">
             <Table>
-            <TableHeader>
-              <TableRow className="table-header">
-                <TableHead>Product</TableHead>
-                <TableHead>Barcode</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Rack</TableHead>
-                <TableHead className="text-center">Stock</TableHead>
-                <TableHead className="text-center">Batches</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredProducts.map((product) => {
-                const batches = getProductBatches(product.id);
-                return (
-                  <TableRow key={product.id} className="hover:bg-muted/30">
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                          <Package className="w-5 h-5 text-primary" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className={`font-medium break-words ${product.is_active === false ? 'line-through text-muted-foreground' : 'text-foreground'}`}>{product.name}</p>
-                            {product.is_active === false && (
-                              <Badge variant="destructive" className="text-xs">Disabled</Badge>
-                            )}
+              <TableHeader>
+                <TableRow className="table-header">
+                  <TableHead>Product</TableHead>
+                  <TableHead>Barcode</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Rack</TableHead>
+                  <TableHead className="text-center">Stock</TableHead>
+                  <TableHead className="text-center">Batches</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredProducts.map((product) => {
+                  const batches = getProductBatches(product.id);
+                  return (
+                    <TableRow key={product.id} className="hover:bg-muted/30">
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                            <Package className="w-5 h-5 text-primary" />
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            {product.strength && (
-                              <span className="text-xs text-primary font-medium">{product.strength}</span>
-                            )}
-                            {product.dosage_form && (
-                              <span className="text-xs text-muted-foreground">• {product.dosage_form}</span>
-                            )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className={`font-medium break-words ${product.is_active === false ? 'line-through text-muted-foreground' : 'text-foreground'}`}>{product.name}</p>
+                              {product.is_active === false && (
+                                <Badge variant="destructive" className="text-xs">Disabled</Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              {product.strength && (
+                                <span className="text-xs text-primary font-medium">{product.strength}</span>
+                              )}
+                              {product.dosage_form && (
+                                <span className="text-xs text-muted-foreground">• {product.dosage_form}</span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{product.barcode || 'N/A'}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{product.category || 'Uncategorized'}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {product.rack ? (
-                        <Badge 
-                          variant="outline" 
-                          style={{ 
-                            borderColor: product.rack.color,
-                            color: product.rack.color 
-                          }}
-                        >
-                          {product.rack.name}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">{getStockBadge(product.id, product.min_stock || 0)}</TableCell>
-                    <TableCell className="text-center">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setViewBatchesId(product.id)}
-                        className="hover:bg-primary/10 hover:text-primary"
-                      >
-                        <Layers className="w-4 h-4 mr-1" />
-                        {batches.length}
-                      </Button>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">{product.barcode || 'N/A'}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{product.category || 'Uncategorized'}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {product.rack ? (
+                          <Badge
+                            variant="outline"
+                            style={{
+                              borderColor: product.rack.color,
+                              color: product.rack.color
+                            }}
+                          >
+                            {product.rack.name}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">{getStockBadge(product.id, product.min_stock || 0)}</TableCell>
+                      <TableCell className="text-center">
                         <Button
                           variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(product)}
+                          size="sm"
+                          onClick={() => setViewBatchesId(product.id)}
                           className="hover:bg-primary/10 hover:text-primary"
                         >
-                          <Pencil className="w-4 h-4" />
+                          <Layers className="w-4 h-4 mr-1" />
+                          {batches.length}
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => setDeleteId(product.id)}
-                          disabled={product.is_active === false}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEdit(product)}
+                            className="hover:bg-primary/10 hover:text-primary"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          {product.is_active === false ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-green-600 hover:text-green-600 hover:bg-green-600/10"
+                              onClick={() => setEnableId(product.id)}
+                            >
+                              <Package className="w-4 h-4" />
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => setDeleteId(product.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {filteredProducts.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-12">
+                      <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+                        <Package className="w-8 h-8 text-muted-foreground/50" />
                       </div>
+                      <p className="text-muted-foreground font-medium">No products found</p>
                     </TableCell>
                   </TableRow>
-                );
-              })}
-              {filteredProducts.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12">
-                    <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
-                      <Package className="w-8 h-8 text-muted-foreground/50" />
-                    </div>
-                    <p className="text-muted-foreground font-medium">No products found</p>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
 
         {/* Add/Edit Product Dialog */}
@@ -506,7 +540,7 @@ export default function Products() {
                     const expiryDate = parseISO(batch.expiry_date);
                     const isExpired = isBefore(expiryDate, today);
                     const isExpiringSoon = !isExpired && isBefore(expiryDate, addDays(today, 30));
-                    
+
                     return (
                       <TableRow key={batch.id} className={isExpired ? 'opacity-50' : ''}>
                         <TableCell className="font-mono text-sm">{batch.batch_number || 'N/A'}</TableCell>
@@ -543,13 +577,31 @@ export default function Products() {
             <AlertDialogHeader>
               <AlertDialogTitle>Disable Product</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to disable this product? Disabled products will not appear in POS search, cart, or sales flow, but will remain visible in the Products page for record purposes. This action can be reversed by editing the product.
+                Are you sure you want to disable this product? Disabled products will not appear in POS search, cart, or sales flow, but will remain visible in the Products page for record purposes. This action can be reversed.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={handleDisable} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                 Disable
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Enable Confirmation */}
+        <AlertDialog open={!!enableId} onOpenChange={() => setEnableId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Enable Product</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to enable this product? Enabled products will appear in POS search, cart, and sales flow.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleEnable} className="bg-green-600 text-white hover:bg-green-700">
+                Enable
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { usePharmacyStore } from '@/store/pharmacyStore';
+import { useSales } from '@/hooks/useSales';
+import { useProducts } from '@/hooks/useProducts';
 import { formatPKR } from '@/lib/currency';
 import {
   Table,
@@ -20,14 +21,18 @@ import { StatCard } from '@/components/dashboard/StatCard';
 import { toast } from 'sonner';
 
 export default function SalesReport() {
-  const { sales, products } = usePharmacyStore();
+  const { sales, loading } = useSales();
+  const { batches } = useProducts();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
   const filteredSales = useMemo(() => {
+    if (!sales || !Array.isArray(sales)) return [];
+
     return sales.filter((sale) => {
-      const saleDate = new Date(sale.createdAt);
-      
+      if (!sale?.created_at) return false;
+      const saleDate = new Date(sale.created_at);
+
       if (dateFrom && dateTo) {
         return isWithinInterval(saleDate, {
           start: startOfDay(parseISO(dateFrom)),
@@ -41,32 +46,47 @@ export default function SalesReport() {
         return saleDate <= endOfDay(parseISO(dateTo));
       }
       return true;
-    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }, [sales, dateFrom, dateTo]);
 
+  // Helper function to get cost price from batch
+  const getCostPrice = (productId: string, batchDeductions: any) => {
+    if (!batchDeductions || !Array.isArray(batchDeductions) || batchDeductions.length === 0) {
+      return 0;
+    }
+
+    // Get the first batch's cost price (FEFO ensures we use the oldest batch)
+    const firstBatchId = batchDeductions[0]?.batch_id;
+    if (!firstBatchId) return 0;
+
+    const batch = batches.find(b => b.id === firstBatchId);
+    return batch?.cost_price || 0;
+  };
+
   // Helper function to calculate profit for a single item
-  const calculateItemProfit = (item: { productId: string; unitPrice: number; quantity: number }) => {
-    const product = products.find(p => p.id === item.productId);
-    const productCost = product?.costPrice || 0;
-    return (item.unitPrice - productCost) * item.quantity;
+  const calculateItemProfit = (item: any) => {
+    if (!item) return 0;
+    const costPrice = getCostPrice(item.product_id, item.batch_deductions);
+    return (item.unit_price - costPrice) * item.quantity;
   };
 
   // Helper function to calculate total profit for a sale
-  const calculateSaleProfit = (sale: { items: Array<{ productId: string; unitPrice: number; quantity: number }> }) => {
-    return sale.items.reduce((sum, item) => sum + calculateItemProfit(item), 0);
+  const calculateSaleProfit = (sale: any) => {
+    if (!sale?.items || !Array.isArray(sale.items)) return 0;
+    return sale.items.reduce((sum: number, item: any) => sum + calculateItemProfit(item), 0);
   };
 
   const stats = useMemo(() => {
-    const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+    const totalRevenue = filteredSales.reduce((sum, sale) => sum + (sale?.total || 0), 0);
     const totalTransactions = filteredSales.length;
     const avgTransaction = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
-    const totalItems = filteredSales.reduce((sum, sale) => 
-      sum + sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0
+    const totalItems = filteredSales.reduce((sum, sale) =>
+      sum + (sale?.items?.reduce((itemSum: number, item: any) => itemSum + (item?.quantity || 0), 0) || 0), 0
     );
     const totalProfit = filteredSales.reduce((sum, sale) => sum + calculateSaleProfit(sale), 0);
 
     return { totalRevenue, totalTransactions, avgTransaction, totalItems, totalProfit };
-  }, [filteredSales, products]);
+  }, [filteredSales, batches]);
 
   const handleDownloadCSV = () => {
     if (filteredSales.length === 0) {
@@ -79,24 +99,26 @@ export default function SalesReport() {
     const rows: string[][] = [];
 
     filteredSales.forEach((sale) => {
-      sale.items.forEach((item, idx) => {
-        const saleDate = format(new Date(sale.createdAt), 'yyyy-MM-dd HH:mm:ss');
+      if (!sale?.items || !Array.isArray(sale.items)) return;
+
+      sale.items.forEach((item: any, idx: number) => {
+        const saleDate = format(new Date(sale.created_at), 'yyyy-MM-dd HH:mm:ss');
         const discount = (sale as any).discount || 0;
         const itemDiscount = idx === 0 ? discount : 0; // Apply discount only to first item row
-        const itemTotal = idx === 0 && sale.items.length === 1 
-          ? sale.total 
-          : item.total - (idx === 0 ? discount / sale.items.length : 0);
-        
+        const itemTotal = idx === 0 && sale.items!.length === 1
+          ? sale.total
+          : item.total - (idx === 0 ? discount / sale.items!.length : 0);
+
         rows.push([
           sale.id,
           saleDate,
-          item.productName,
-          item.quantity.toString(),
-          formatPKR(item.unitPrice).replace('PKR ', ''),
-          formatPKR(item.total).replace('PKR ', ''),
+          item.product_name || '',
+          item.quantity?.toString() || '0',
+          formatPKR(item.unit_price || 0).replace('PKR ', ''),
+          formatPKR(item.total || 0).replace('PKR ', ''),
           idx === 0 ? formatPKR(discount).replace('PKR ', '') : '0',
           formatPKR(itemTotal).replace('PKR ', ''),
-          sale.paymentMethod,
+          sale.payment_method || '',
         ]);
       });
     });
@@ -117,7 +139,7 @@ export default function SalesReport() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
     toast.success('Sales report downloaded successfully');
   };
 
@@ -218,77 +240,86 @@ export default function SalesReport() {
         <div className="bg-card rounded-2xl border border-border/60 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <Table>
-            <TableHeader>
-              <TableRow className="table-header">
-                <TableHead>Sale ID</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead>Payment</TableHead>
-                <TableHead>Date & Time</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Profit</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredSales.map((sale) => (
-                <TableRow key={sale.id} className="hover:bg-muted/30">
-                  <TableCell className="font-mono text-sm">#{sale.id}</TableCell>
-                  <TableCell>
-                    <div className="space-y-1">
-                      {sale.items.map((item, idx) => (
-                        <div key={idx} className="text-sm">
-                          <span className="font-medium">{item.productName}</span>
-                          <span className="text-muted-foreground"> × {item.quantity}</span>
-                          <span className="text-xs text-muted-foreground ml-2">
-                            (Profit: {formatPKR(calculateItemProfit(item))})
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="capitalize">
-                      {sale.paymentMethod}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {format(new Date(sale.createdAt), 'MMM d, yyyy h:mm a')}
-                  </TableCell>
-                  <TableCell className="text-right font-semibold text-lg text-primary">
-                    {formatPKR(sale.total)}
-                  </TableCell>
-                  <TableCell className="text-right font-semibold text-primary">
-                    {formatPKR(calculateSaleProfit(sale))}
-                  </TableCell>
+              <TableHeader>
+                <TableRow className="table-header">
+                  <TableHead>Sale ID</TableHead>
+                  <TableHead>Items</TableHead>
+                  <TableHead>Payment</TableHead>
+                  <TableHead>Date & Time</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Profit</TableHead>
                 </TableRow>
-              ))}
-              {filteredSales.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12">
-                    <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
-                      <Receipt className="w-8 h-8 text-muted-foreground/50" />
-                    </div>
-                    <p className="text-muted-foreground font-medium">No sales found</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {dateFrom || dateTo
-                        ? 'Try adjusting your date filter'
-                        : 'Sales will appear here once you make your first sale'}
-                    </p>
-                  </TableCell>
-                </TableRow>
-              )}
-              {filteredSales.length > 0 && (
-                <TableRow className="bg-muted/50 font-semibold border-t-2">
-                  <TableCell colSpan={4} className="text-right">Total:</TableCell>
-                  <TableCell className="text-right font-semibold text-lg text-primary">
-                    {formatPKR(stats.totalRevenue)}
-                  </TableCell>
-                  <TableCell className="text-right font-semibold text-lg text-primary">
-                    {formatPKR(stats.totalProfit)}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-12">
+                      <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+                        <Receipt className="w-8 h-8 text-muted-foreground/50 animate-pulse" />
+                      </div>
+                      <p className="text-muted-foreground font-medium">Loading sales...</p>
+                    </TableCell>
+                  </TableRow>
+                ) : filteredSales.map((sale) => (
+                  <TableRow key={sale.id} className="hover:bg-muted/30">
+                    <TableCell className="font-mono text-sm">#{sale.id}</TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        {sale.items?.map((item: any, idx: number) => (
+                          <div key={idx} className="text-sm">
+                            <span className="font-medium">{item.product_name || 'Unknown'}</span>
+                            <span className="text-muted-foreground"> × {item.quantity || 0}</span>
+                            <span className="text-xs text-muted-foreground ml-2">
+                              (Profit: {formatPKR(calculateItemProfit(item))})
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">
+                        {sale.payment_method || 'N/A'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {format(new Date(sale.created_at), 'MMM d, yyyy h:mm a')}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold text-lg text-primary">
+                      {formatPKR(sale.total || 0)}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold text-primary">
+                      {formatPKR(calculateSaleProfit(sale))}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {!loading && filteredSales.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-12">
+                      <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
+                        <Receipt className="w-8 h-8 text-muted-foreground/50" />
+                      </div>
+                      <p className="text-muted-foreground font-medium">No sales found</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {dateFrom || dateTo
+                          ? 'Try adjusting your date filter'
+                          : 'Sales will appear here once you make your first sale'}
+                      </p>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading && filteredSales.length > 0 && (
+                  <TableRow className="bg-muted/50 font-semibold border-t-2">
+                    <TableCell colSpan={4} className="text-right">Total:</TableCell>
+                    <TableCell className="text-right font-semibold text-lg text-primary">
+                      {formatPKR(stats.totalRevenue)}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold text-lg text-primary">
+                      {formatPKR(stats.totalProfit)}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </div>
         </div>
       </div>

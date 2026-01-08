@@ -76,11 +76,11 @@ export function useProducts() {
       const { data, error: queryError } = await query
         .order('name')
         .limit(MAX_RECORDS_PER_QUERY);
-      
+
       if (queryError) {
         throw queryError;
       }
-      
+
       // Defensive null handling
       setProducts(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
@@ -101,11 +101,11 @@ export function useProducts() {
         .select('id, product_id, batch_number, quantity, cost_price, selling_price, expiry_date, purchase_date, supplier, created_by, created_at')
         .order('expiry_date')
         .limit(MAX_RECORDS_PER_QUERY);
-      
+
       if (queryError) {
         throw queryError;
       }
-      
+
       // Defensive null handling
       setBatches(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
@@ -212,7 +212,6 @@ export function useProducts() {
       // Defensive null handling
       return data && typeof data === 'string' ? data : null;
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to generate barcode';
       console.error('Error generating barcode:', err);
       toast.error('Failed to generate barcode');
       return null;
@@ -323,7 +322,7 @@ export function useProducts() {
           rack:racks(id, name, color)
         `)
         .single();
-      
+
       if (insertError) {
         console.error('Product insert error:', insertError);
         if (insertError.code === '23505') {
@@ -332,11 +331,11 @@ export function useProducts() {
           });
           return null;
         }
-        
+
         // Handle RLS policy violations - try to fix by ensuring user has role
         if (insertError.message?.includes('row-level security policy') || insertError.code === '42501') {
           console.error('RLS Policy Error - User ID:', user?.id, 'Authenticated:', !!user);
-          
+
           // Try to fix by ensuring user has a role, then retry once
           if (user?.id) {
             const { error: roleFixError } = await supabase
@@ -376,7 +375,7 @@ export function useProducts() {
           });
           return null;
         }
-        
+
         // Handle schema errors gracefully - if salt_formula column doesn't exist, retry without it
         if (insertError.message?.includes("Could not find") && insertError.message?.includes("column") && payload.salt_formula) {
           const { salt_formula: _, ...payloadWithoutSalt } = payload;
@@ -388,7 +387,7 @@ export function useProducts() {
               rack:racks(id, name, color)
             `)
             .single();
-          
+
           if (!retryResult.error && retryResult.data) {
             setProducts((prev) => {
               const updated = [...prev, retryResult.data!];
@@ -398,14 +397,14 @@ export function useProducts() {
             return retryResult.data;
           }
         }
-        
+
         if (insertError.message?.includes("Could not find") && insertError.message?.includes("column")) {
           toast.error('Database schema needs update', {
             description: 'Please apply the latest migration to add the salt_formula column, or contact your administrator.',
           });
           return null;
         }
-        
+
         // Show detailed error message with error code for debugging
         const errorMessage = insertError.message || insertError.details || 'Unknown error';
         const errorHint = insertError.hint || '';
@@ -422,14 +421,14 @@ export function useProducts() {
         });
         return null;
       }
-      
+
       if (!data) {
         toast.error('Product was not created', {
           description: 'No data returned from server. Please try again',
         });
         return null;
       }
-      
+
       setProducts((prev) => {
         const updated = [...prev, data];
         return updated.sort((a, b) => a.name.localeCompare(b.name));
@@ -475,7 +474,7 @@ export function useProducts() {
       }
 
       const { rack, salt_formula, ...updateData } = updates;
-      
+
       // Helper to convert empty strings to null for optional fields
       const toOptionalString = (value: string | null | undefined): string | null => {
         if (!value || typeof value !== 'string') return null;
@@ -501,7 +500,7 @@ export function useProducts() {
           rack:racks(id, name, color)
         `)
         .single();
-      
+
       if (updateError) {
         // Handle RLS policy violations
         if (updateError.message?.includes('row-level security policy') || updateError.code === '42501') {
@@ -510,7 +509,7 @@ export function useProducts() {
           });
           return null;
         }
-        
+
         // Handle schema errors gracefully
         if (updateError.message?.includes("Could not find") && updateError.message?.includes("column") && finalUpdateData.salt_formula !== undefined) {
           // If salt_formula column doesn't exist, retry without it
@@ -524,7 +523,7 @@ export function useProducts() {
               rack:racks(id, name, color)
             `)
             .single();
-          
+
           if (!retryResult.error && retryResult.data) {
             setProducts((prev) =>
               prev.map((p) => (p.id === id ? retryResult.data! : p))
@@ -533,14 +532,14 @@ export function useProducts() {
             return retryResult.data;
           }
         }
-        
+
         if (updateError.message?.includes("Could not find") && updateError.message?.includes("column")) {
           toast.error('Database schema needs update', {
             description: 'Please apply the latest migration to add the salt_formula column, or contact your administrator.',
           });
           return null;
         }
-        
+
         // Show detailed error message
         const errorMessage = updateError.message || updateError.details || 'Unknown error';
         const errorCode = updateError.code || '';
@@ -554,12 +553,12 @@ export function useProducts() {
         });
         return null;
       }
-      
+
       if (!data) {
         toast.error('Product was not found');
         return null;
       }
-      
+
       setProducts((prev) =>
         prev.map((p) => (p.id === id ? data : p))
       );
@@ -594,7 +593,7 @@ export function useProducts() {
           rack:racks(id, name, color)
         `)
         .single();
-      
+
       if (updateError) {
         // Handle RLS policy violations
         if (updateError.message?.includes('row-level security policy') || updateError.code === '42501') {
@@ -605,12 +604,12 @@ export function useProducts() {
         }
         throw updateError;
       }
-      
+
       if (!data) {
         toast.error('Product was not found');
         return false;
       }
-      
+
       setProducts((prev) =>
         prev.map((p) => (p.id === id ? data : p))
       );
@@ -619,6 +618,57 @@ export function useProducts() {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to disable product';
       console.error('Error disabling product:', err);
+      toast.error(errorMessage);
+      return false;
+    }
+  };
+
+  const enableProduct = async (id: string) => {
+    try {
+      if (!id || typeof id !== 'string') {
+        toast.error('Invalid product ID');
+        return false;
+      }
+
+      if (!user?.id) {
+        toast.error('You must be logged in to enable products');
+        return false;
+      }
+
+      const { data, error: updateError } = await supabase
+        .from('products')
+        .update({ is_active: true })
+        .eq('id', id)
+        .select(`
+          *,
+          rack:racks(id, name, color)
+        `)
+        .single();
+
+      if (updateError) {
+        // Handle RLS policy violations
+        if (updateError.message?.includes('row-level security policy') || updateError.code === '42501') {
+          toast.error('Permission denied', {
+            description: 'You do not have permission to enable products. Please ensure you are logged in and have the proper role assigned.',
+          });
+          return false;
+        }
+        throw updateError;
+      }
+
+      if (!data) {
+        toast.error('Product was not found');
+        return false;
+      }
+
+      setProducts((prev) =>
+        prev.map((p) => (p.id === id ? data : p))
+      );
+      toast.success('Product enabled');
+      return true;
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to enable product';
+      console.error('Error enabling product:', err);
       toast.error(errorMessage);
       return false;
     }
@@ -695,16 +745,16 @@ export function useProducts() {
         })
         .select()
         .single();
-      
+
       if (insertError) {
         throw insertError;
       }
-      
+
       if (!data) {
         toast.error('Stock batch was not created');
         return null;
       }
-      
+
       setBatches((prev) => {
         const updated = [...prev, data];
         return updated.sort((a, b) => a.expiry_date.localeCompare(b.expiry_date));
@@ -725,9 +775,9 @@ export function useProducts() {
         .from('stock_batches')
         .update({ quantity: newQuantity })
         .eq('id', batchId);
-      
+
       if (error) throw error;
-      
+
       setBatches((prev) =>
         prev.map((b) => (b.id === batchId ? { ...b, quantity: newQuantity } : b))
       );
@@ -753,6 +803,7 @@ export function useProducts() {
     addProduct,
     updateProduct,
     disableProduct,
+    enableProduct,
     getProductByBarcode,
     getProductStock,
     getProductBatches,
