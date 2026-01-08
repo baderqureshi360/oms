@@ -20,7 +20,7 @@ import { StatCard } from '@/components/dashboard/StatCard';
 import { toast } from 'sonner';
 
 export default function SalesReport() {
-  const { sales } = usePharmacyStore();
+  const { sales, products } = usePharmacyStore();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -44,6 +44,18 @@ export default function SalesReport() {
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [sales, dateFrom, dateTo]);
 
+  // Helper function to calculate profit for a single item
+  const calculateItemProfit = (item: { productId: string; unitPrice: number; quantity: number }) => {
+    const product = products.find(p => p.id === item.productId);
+    const productCost = product?.costPrice || 0;
+    return (item.unitPrice - productCost) * item.quantity;
+  };
+
+  // Helper function to calculate total profit for a sale
+  const calculateSaleProfit = (sale: { items: Array<{ productId: string; unitPrice: number; quantity: number }> }) => {
+    return sale.items.reduce((sum, item) => sum + calculateItemProfit(item), 0);
+  };
+
   const stats = useMemo(() => {
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
     const totalTransactions = filteredSales.length;
@@ -51,9 +63,10 @@ export default function SalesReport() {
     const totalItems = filteredSales.reduce((sum, sale) => 
       sum + sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0
     );
+    const totalProfit = filteredSales.reduce((sum, sale) => sum + calculateSaleProfit(sale), 0);
 
-    return { totalRevenue, totalTransactions, avgTransaction, totalItems };
-  }, [filteredSales]);
+    return { totalRevenue, totalTransactions, avgTransaction, totalItems, totalProfit };
+  }, [filteredSales, products]);
 
   const handleDownloadCSV = () => {
     if (filteredSales.length === 0) {
@@ -117,56 +130,58 @@ export default function SalesReport() {
 
   return (
     <MainLayout>
-      <div className="p-6 lg:p-8">
-        <div className="page-header">
-          <h1 className="page-title">Sales Report</h1>
-          <p className="page-subtitle">View and analyze your sales data</p>
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="page-header mb-6 sm:mb-8">
+          <h1 className="page-title text-2xl sm:text-3xl">Sales Report</h1>
+          <p className="page-subtitle text-sm sm:text-base">View and analyze your sales data</p>
         </div>
 
         {/* Date Filter */}
-        <div className="bg-card rounded-2xl border border-border/60 p-5 mb-6 shadow-sm">
-          <div className="flex items-center justify-between gap-6 flex-wrap">
-            <div className="flex items-center gap-6 flex-wrap flex-1">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+        <div className="bg-card rounded-2xl border border-border/60 p-4 sm:p-5 mb-4 sm:mb-6 shadow-sm">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <Calendar className="w-5 h-5 text-primary" />
               </div>
-              <div className="flex items-center gap-4 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="dateFrom" className="text-sm text-muted-foreground whitespace-nowrap">From</Label>
-                  <Input
-                    id="dateFrom"
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-44"
-                  />
+              <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="dateFrom" className="text-sm text-muted-foreground whitespace-nowrap">From</Label>
+                    <Input
+                      id="dateFrom"
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="w-full sm:w-44 h-10 sm:h-9"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="dateTo" className="text-sm text-muted-foreground whitespace-nowrap">To</Label>
+                    <Input
+                      id="dateTo"
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="w-full sm:w-44 h-10 sm:h-9"
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="dateTo" className="text-sm text-muted-foreground whitespace-nowrap">To</Label>
-                  <Input
-                    id="dateTo"
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="w-44"
-                  />
-                </div>
+                {(dateFrom || dateTo) && (
+                  <button
+                    onClick={() => { setDateFrom(''); setDateTo(''); }}
+                    className="text-sm text-primary hover:underline font-medium whitespace-nowrap"
+                  >
+                    Clear filter
+                  </button>
+                )}
               </div>
-              {(dateFrom || dateTo) && (
-                <button
-                  onClick={() => { setDateFrom(''); setDateTo(''); }}
-                  className="text-sm text-primary hover:underline font-medium"
-                >
-                  Clear filter
-                </button>
-              )}
             </div>
-            <div className="flex gap-2">
-              <Button onClick={handleDownloadCSV} variant="outline" size="sm">
+            <div className="flex gap-2 flex-wrap">
+              <Button onClick={handleDownloadCSV} variant="outline" size="sm" className="flex-1 sm:flex-initial">
                 <Download className="w-4 h-4 mr-2" />
                 Download CSV
               </Button>
-              <Button onClick={handleDownloadExcel} variant="outline" size="sm">
+              <Button onClick={handleDownloadExcel} variant="outline" size="sm" className="flex-1 sm:flex-initial">
                 <Download className="w-4 h-4 mr-2" />
                 Download Excel
               </Button>
@@ -175,7 +190,7 @@ export default function SalesReport() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
           <StatCard
             title="Total Revenue"
             value={formatPKR(stats.totalRevenue)}
@@ -201,7 +216,8 @@ export default function SalesReport() {
 
         {/* Sales Table */}
         <div className="bg-card rounded-2xl border border-border/60 shadow-sm overflow-hidden">
-          <Table>
+          <div className="overflow-x-auto">
+            <Table>
             <TableHeader>
               <TableRow className="table-header">
                 <TableHead>Sale ID</TableHead>
@@ -209,6 +225,7 @@ export default function SalesReport() {
                 <TableHead>Payment</TableHead>
                 <TableHead>Date & Time</TableHead>
                 <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">Profit</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -221,6 +238,9 @@ export default function SalesReport() {
                         <div key={idx} className="text-sm">
                           <span className="font-medium">{item.productName}</span>
                           <span className="text-muted-foreground"> × {item.quantity}</span>
+                          <span className="text-xs text-muted-foreground ml-2">
+                            (Profit: {formatPKR(calculateItemProfit(item))})
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -236,11 +256,14 @@ export default function SalesReport() {
                   <TableCell className="text-right font-semibold text-lg text-primary">
                     {formatPKR(sale.total)}
                   </TableCell>
+                  <TableCell className="text-right font-semibold text-primary">
+                    {formatPKR(calculateSaleProfit(sale))}
+                  </TableCell>
                 </TableRow>
               ))}
               {filteredSales.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-12">
+                  <TableCell colSpan={6} className="text-center py-12">
                     <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
                       <Receipt className="w-8 h-8 text-muted-foreground/50" />
                     </div>
@@ -253,8 +276,20 @@ export default function SalesReport() {
                   </TableCell>
                 </TableRow>
               )}
+              {filteredSales.length > 0 && (
+                <TableRow className="bg-muted/50 font-semibold border-t-2">
+                  <TableCell colSpan={4} className="text-right">Total:</TableCell>
+                  <TableCell className="text-right font-semibold text-lg text-primary">
+                    {formatPKR(stats.totalRevenue)}
+                  </TableCell>
+                  <TableCell className="text-right font-semibold text-lg text-primary">
+                    {formatPKR(stats.totalProfit)}
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
+          </div>
         </div>
       </div>
     </MainLayout>

@@ -53,11 +53,12 @@ export function useSales() {
   const fetchSales = useCallback(async () => {
     try {
       setError(null);
+      // Optimize query - select only required fields
       const { data, error: queryError } = await supabase
         .from('sales')
         .select(`
-          *,
-          items:sale_items(*)
+          id, receipt_number, total, payment_method, cashier_id, created_at, discount,
+          items:sale_items(id, sale_id, product_id, product_name, quantity, unit_price, total, batch_deductions)
         `)
         .order('created_at', { ascending: false })
         .limit(MAX_RECORDS_PER_QUERY);
@@ -196,21 +197,45 @@ export function useSales() {
 
       if (itemsError) throw itemsError;
 
-      // Update batch quantities
+      // Optimize batch quantity updates - batch multiple updates together
+      // Collect all batch updates first
+      const batchUpdates: Array<{ id: string; quantity: number }> = [];
+      const batchIdsToFetch = new Set<string>();
+      
       for (const item of itemsWithDeductions) {
         for (const deduction of item.batch_deductions) {
-          const { data: currentBatch } = await supabase
-            .from('stock_batches')
-            .select('quantity')
-            .eq('id', deduction.batch_id)
-            .single();
+          batchIdsToFetch.add(deduction.batch_id);
+        }
+      }
 
-          if (currentBatch) {
-            await supabase
-              .from('stock_batches')
-              .update({ quantity: currentBatch.quantity - deduction.quantity })
-              .eq('id', deduction.batch_id);
+      // Fetch all current batch quantities in a single query
+      if (batchIdsToFetch.size > 0) {
+        const { data: currentBatches } = await supabase
+          .from('stock_batches')
+          .select('id, quantity')
+          .in('id', Array.from(batchIdsToFetch));
+
+        if (currentBatches) {
+          const batchMap = new Map(currentBatches.map(b => [b.id, b.quantity]));
+          
+          // Calculate new quantities
+          for (const item of itemsWithDeductions) {
+            for (const deduction of item.batch_deductions) {
+              const currentQty = batchMap.get(deduction.batch_id) || 0;
+              const newQty = currentQty - deduction.quantity;
+              batchUpdates.push({ id: deduction.batch_id, quantity: newQty });
+            }
           }
+
+          // Execute all updates in parallel using Promise.all
+          await Promise.all(
+            batchUpdates.map(update =>
+              supabase
+                .from('stock_batches')
+                .update({ quantity: update.quantity })
+                .eq('id', update.id)
+            )
+          );
         }
       }
 
@@ -255,12 +280,17 @@ export function useSales() {
     }
   };
 
+  // Memoize refetch function to prevent unnecessary re-renders
+  const stableRefetch = useCallback(() => {
+    return fetchSales();
+  }, [fetchSales]);
+
   return {
     sales,
     loading,
     error,
     processSale,
     getSaleByReceipt,
-    refetch: fetchSales,
+    refetch: stableRefetch,
   };
 }

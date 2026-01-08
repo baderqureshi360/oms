@@ -18,11 +18,11 @@ export const ReceiptPrint = forwardRef<HTMLDivElement, ReceiptPrintProps>(
     return (
       <div
         ref={ref}
-        className="bg-white text-black p-6 w-[300px] font-mono text-sm"
+        className="receipt-content bg-white text-black p-6 w-[300px] font-mono text-sm"
         style={{ fontFamily: 'monospace' }}
       >
         {/* Header */}
-        <div className="text-center border-b border-dashed border-gray-400 pb-4 mb-4">
+        <div className="receipt-header text-center border-b border-dashed border-gray-400 pb-4 mb-4">
           <h1 className="text-xl font-bold">Health Haven Pharmacy</h1>
           <p className="text-xs mt-1">Azam Chowk Sector#2, Khalabat Township Haripur</p>
           <p className="text-xs text-gray-600 mt-2">
@@ -34,13 +34,13 @@ export const ReceiptPrint = forwardRef<HTMLDivElement, ReceiptPrintProps>(
         </div>
 
         {/* Items */}
-        <div className="border-b border-dashed border-gray-400 pb-4 mb-4">
+        <div className="receipt-items border-b border-dashed border-gray-400 pb-4 mb-4">
           <div className="flex justify-between text-xs font-bold mb-2">
             <span>Item</span>
             <span>Amount</span>
           </div>
           {items.map((item, index) => (
-            <div key={index} className="mb-2">
+            <div key={index} className="receipt-item mb-2">
               <div className="flex justify-between">
                 <span className="truncate max-w-[180px]">{item.productName}</span>
                 <span className="font-semibold">{formatPKR(item.total)}</span>
@@ -53,7 +53,7 @@ export const ReceiptPrint = forwardRef<HTMLDivElement, ReceiptPrintProps>(
         </div>
 
         {/* Totals */}
-        <div className="space-y-1 mb-4">
+        <div className="receipt-totals space-y-1 mb-4">
           <div className="flex justify-between text-xs">
             <span>Subtotal:</span>
             <span>{formatPKR(total)}</span>
@@ -71,7 +71,7 @@ export const ReceiptPrint = forwardRef<HTMLDivElement, ReceiptPrintProps>(
         </div>
 
         {/* Payment Info */}
-        <div className="text-center border-t border-dashed border-gray-400 pt-4">
+        <div className="receipt-footer text-center border-t border-dashed border-gray-400 pt-4">
           <p className="text-xs">
             Payment Method: <span className="capitalize font-semibold">{paymentMethod}</span>
           </p>

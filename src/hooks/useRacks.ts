@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -18,7 +18,7 @@ export function useRacks() {
   // Maximum number of records to fetch per query (pagination limit)
   const MAX_RECORDS_PER_QUERY = 1000;
 
-  const fetchRacks = async () => {
+  const fetchRacks = useCallback(async () => {
     try {
       setError(null);
       const { data, error: queryError } = await supabase
@@ -42,7 +42,11 @@ export function useRacks() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchRacks();
+  }, [fetchRacks]);
 
   const addRack = async (name: string, color: string, description?: string) => {
     try {
@@ -143,10 +147,6 @@ export function useRacks() {
       return false;
     }
   };
-
-  useEffect(() => {
-    fetchRacks();
-  }, []);
 
   return {
     racks,

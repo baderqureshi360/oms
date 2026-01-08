@@ -3,8 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Product } from '@/hooks/useProducts';
-import { useProducts } from '@/hooks/useProducts';
+import { Product, useProducts } from '@/hooks/useProducts';
 import { useRacks } from '@/hooks/useRacks';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -179,8 +178,8 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+      <div className="flex-1 overflow-y-auto pr-0 sm:pr-2 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="name">Medicine Name</Label>
             <Input
@@ -202,7 +201,7 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="dosageForm">Dosage Form</Label>
             <Select
@@ -264,7 +263,7 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="category">Category</Label>
             <Select
@@ -332,7 +331,7 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="manufacturer">Manufacturer</Label>
             <Input
@@ -382,11 +381,11 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
         </div>
       </div>
 
-      <div className="flex justify-end gap-3 pt-4 border-t mt-4 flex-shrink-0">
-        <Button type="button" variant="outline" onClick={onCancel}>
+      <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t mt-4 flex-shrink-0">
+        <Button type="button" variant="outline" onClick={onCancel} className="w-full sm:w-auto">
           Cancel
         </Button>
-        <Button type="submit">
+        <Button type="submit" className="w-full sm:w-auto">
           {product ? 'Update Product' : 'Add Product'}
         </Button>
       </div>

@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { RouteErrorBoundaryWrapper } from "@/components/RouteErrorBoundary";
+import { ReceiptProvider } from "@/contexts/ReceiptContext";
+import { ReceiptContainer } from "@/components/pos/ReceiptContainer";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import PointOfSale from "./pages/PointOfSale";
@@ -32,92 +34,96 @@ const queryClient = new QueryClient({
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route 
-              path="/auth" 
-              element={
-                <RouteErrorBoundaryWrapper>
-                  <Auth />
-                </RouteErrorBoundaryWrapper>
-              } 
-            />
-            <Route 
-              path="/" 
-              element={
-                <ProtectedRoute>
+      <ReceiptProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route 
+                path="/auth" 
+                element={
                   <RouteErrorBoundaryWrapper>
-                    <Index />
+                    <Auth />
                   </RouteErrorBoundaryWrapper>
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/pos" 
-              element={
-                <ProtectedRoute>
-                  <RouteErrorBoundaryWrapper>
-                    <PointOfSale />
-                  </RouteErrorBoundaryWrapper>
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/products" 
-              element={
-                <ProtectedRoute>
-                  <RouteErrorBoundaryWrapper>
-                    <Products />
-                  </RouteErrorBoundaryWrapper>
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/purchases" 
-              element={
-                <ProtectedRoute>
-                  <RouteErrorBoundaryWrapper>
-                    <StockPurchases />
-                  </RouteErrorBoundaryWrapper>
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/sales" 
-              element={
-                <ProtectedRoute>
-                  <RouteErrorBoundaryWrapper>
-                    <SalesReport />
-                  </RouteErrorBoundaryWrapper>
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/racks" 
-              element={
-                <ProtectedRoute>
-                  <RouteErrorBoundaryWrapper>
-                    <Racks />
-                  </RouteErrorBoundaryWrapper>
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="*" 
-              element={
-                <ProtectedRoute>
-                  <RouteErrorBoundaryWrapper>
-                    <NotFound />
-                  </RouteErrorBoundaryWrapper>
-                </ProtectedRoute>
-              } 
-            />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
+                } 
+              />
+              <Route 
+                path="/" 
+                element={
+                  <ProtectedRoute>
+                    <RouteErrorBoundaryWrapper>
+                      <Index />
+                    </RouteErrorBoundaryWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/pos" 
+                element={
+                  <ProtectedRoute>
+                    <RouteErrorBoundaryWrapper>
+                      <PointOfSale />
+                    </RouteErrorBoundaryWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/products" 
+                element={
+                  <ProtectedRoute>
+                    <RouteErrorBoundaryWrapper>
+                      <Products />
+                    </RouteErrorBoundaryWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/purchases" 
+                element={
+                  <ProtectedRoute>
+                    <RouteErrorBoundaryWrapper>
+                      <StockPurchases />
+                    </RouteErrorBoundaryWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/sales" 
+                element={
+                  <ProtectedRoute>
+                    <RouteErrorBoundaryWrapper>
+                      <SalesReport />
+                    </RouteErrorBoundaryWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/racks" 
+                element={
+                  <ProtectedRoute>
+                    <RouteErrorBoundaryWrapper>
+                      <Racks />
+                    </RouteErrorBoundaryWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="*" 
+                element={
+                  <ProtectedRoute>
+                    <RouteErrorBoundaryWrapper>
+                      <NotFound />
+                    </RouteErrorBoundaryWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+            </Routes>
+          </BrowserRouter>
+          {/* Receipt container rendered outside all layouts for printing */}
+          <ReceiptContainer />
+        </TooltipProvider>
+      </ReceiptProvider>
     </AuthProvider>
   </QueryClientProvider>
 );

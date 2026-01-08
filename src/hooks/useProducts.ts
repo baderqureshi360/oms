@@ -14,6 +14,7 @@ export interface Product {
   salt_formula: string | null;
   rack_id: string | null;
   min_stock: number;
+  is_active: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -94,9 +95,10 @@ export function useProducts() {
   const fetchBatches = useCallback(async () => {
     try {
       setError(null);
+      // Optimize query - select only required fields for better performance
       const { data, error: queryError } = await supabase
         .from('stock_batches')
-        .select('*')
+        .select('id, product_id, batch_number, quantity, cost_price, selling_price, expiry_date, purchase_date, supplier, created_by, created_at')
         .order('expiry_date')
         .limit(MAX_RECORDS_PER_QUERY);
       
@@ -131,6 +133,75 @@ export function useProducts() {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  // Set up real-time subscriptions for products and batches
+  // Optimized to use incremental updates instead of full refetch when possible
+  useEffect(() => {
+    // Subscribe to products changes with incremental updates
+    const productsChannel = supabase
+      .channel('products-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'products',
+        },
+        (payload) => {
+          // Use incremental updates for better performance
+          // Note: Real-time payload may not include joined fields like rack, so we refetch when needed
+          if (payload.eventType === 'DELETE' && payload.old) {
+            // For deletes, we can safely update without refetch
+            setProducts((prev) => prev.filter((p) => p.id !== payload.old.id));
+          } else {
+            // For INSERT/UPDATE, refetch to ensure we have all joined fields (rack, etc.)
+            // This is still more efficient than refetching on every render
+            fetchProducts(undefined, undefined);
+          }
+        }
+      )
+      .subscribe();
+
+    // Subscribe to stock_batches changes with incremental updates
+    const batchesChannel = supabase
+      .channel('batches-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'stock_batches',
+        },
+        (payload) => {
+          // Use incremental updates for better performance
+          if (payload.eventType === 'INSERT' && payload.new) {
+            setBatches((prev) => {
+              const exists = prev.some(b => b.id === payload.new.id);
+              if (exists) return prev;
+              const updated = [...prev, payload.new as StockBatch];
+              return updated.sort((a, b) => a.expiry_date.localeCompare(b.expiry_date));
+            });
+          } else if (payload.eventType === 'UPDATE' && payload.new) {
+            setBatches((prev) =>
+              prev.map((b) => (b.id === payload.new.id ? payload.new as StockBatch : b))
+                .sort((a, b) => a.expiry_date.localeCompare(b.expiry_date))
+            );
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            setBatches((prev) => prev.filter((b) => b.id !== payload.old.id));
+          } else {
+            // Fallback to full refetch for unknown events
+            fetchBatches();
+          }
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      supabase.removeChannel(productsChannel);
+      supabase.removeChannel(batchesChannel);
+    };
+  }, [fetchProducts, fetchBatches]);
 
   const generateBarcode = async (): Promise<string | null> => {
     try {
@@ -232,6 +303,7 @@ export function useProducts() {
         manufacturer: toOptionalString(product.manufacturer),
         rack_id: product.rack_id,
         min_stock: product.min_stock,
+        is_active: true, // New products are always active
         created_by: user.id,
       };
 
@@ -501,29 +573,52 @@ export function useProducts() {
     }
   };
 
-  const deleteProduct = async (id: string) => {
+  const disableProduct = async (id: string) => {
     try {
       if (!id || typeof id !== 'string') {
         toast.error('Invalid product ID');
         return false;
       }
 
-      const { error: deleteError } = await supabase
+      if (!user?.id) {
+        toast.error('You must be logged in to disable products');
+        return false;
+      }
+
+      const { data, error: updateError } = await supabase
         .from('products')
-        .delete()
-        .eq('id', id);
+        .update({ is_active: false })
+        .eq('id', id)
+        .select(`
+          *,
+          rack:racks(id, name, color)
+        `)
+        .single();
       
-      if (deleteError) {
-        throw deleteError;
+      if (updateError) {
+        // Handle RLS policy violations
+        if (updateError.message?.includes('row-level security policy') || updateError.code === '42501') {
+          toast.error('Permission denied', {
+            description: 'You do not have permission to disable products. Please ensure you are logged in and have the proper role assigned.',
+          });
+          return false;
+        }
+        throw updateError;
       }
       
-      setProducts((prev) => prev.filter((p) => p.id !== id));
-      setBatches((prev) => prev.filter((b) => b.product_id !== id));
-      toast.success('Product deleted');
+      if (!data) {
+        toast.error('Product was not found');
+        return false;
+      }
+      
+      setProducts((prev) =>
+        prev.map((p) => (p.id === id ? data : p))
+      );
+      toast.success('Product disabled');
       return true;
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to delete product';
-      console.error('Error deleting product:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to disable product';
+      console.error('Error disabling product:', err);
       toast.error(errorMessage);
       return false;
     }
@@ -535,7 +630,8 @@ export function useProducts() {
     }
     const trimmedBarcode = barcode.trim();
     if (!trimmedBarcode) return undefined;
-    return products.find((p) => p.barcode && p.barcode.trim() === trimmedBarcode) || undefined;
+    // Only return active products
+    return products.find((p) => p.barcode && p.barcode.trim() === trimmedBarcode && p.is_active !== false) || undefined;
   }, [products]);
 
   const getProductStock = useCallback((productId: string | null | undefined) => {
@@ -644,6 +740,11 @@ export function useProducts() {
     }
   };
 
+  // Memoize refetch function to prevent unnecessary re-renders in consuming components
+  const stableRefetch = useCallback(() => {
+    return fetchAll();
+  }, [fetchAll]);
+
   return {
     products,
     batches,
@@ -651,7 +752,7 @@ export function useProducts() {
     error,
     addProduct,
     updateProduct,
-    deleteProduct,
+    disableProduct,
     getProductByBarcode,
     getProductStock,
     getProductBatches,
@@ -661,7 +762,7 @@ export function useProducts() {
     generateBarcode,
     addBatch,
     updateBatchQuantity,
-    refetch: fetchAll,
+    refetch: stableRefetch,
     fetchProducts, // Expose fetchProducts for server-side search if needed
   };
 }

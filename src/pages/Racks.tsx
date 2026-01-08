@@ -23,7 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { useRacks, Rack } from '@/hooks/useRacks';
 import { useProducts } from '@/hooks/useProducts';
 import { useAuth } from '@/hooks/useAuth';
-import { Plus, Edit2, Trash2, LayoutGrid, Loader2, Package, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, LayoutGrid, Loader2, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
@@ -38,7 +38,7 @@ export default function Racks() {
   const { isOwner } = useAuth();
   const navigate = useNavigate();
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [editingRack, setEditingRack] = useState<any>(null);
+  const [editingRack, setEditingRack] = useState<Rack | null>(null);
   const [selectedRackId, setSelectedRackId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [color, setColor] = useState(COLORS[0]);
@@ -113,23 +113,24 @@ export default function Racks() {
 
   return (
     <MainLayout>
-      <div className="page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="page-title flex items-center gap-3">
-            <LayoutGrid className="w-8 h-8 text-primary" />
-            Rack Management
-          </h1>
-          <p className="page-subtitle">Organize products by physical location</p>
-        </div>
-        {isOwner && (
-          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={resetForm}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Rack
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
+          <div>
+            <h1 className="page-title text-2xl sm:text-3xl flex items-center gap-2 sm:gap-3">
+              <LayoutGrid className="w-6 h-6 sm:w-8 sm:h-8 text-primary" />
+              Rack Management
+            </h1>
+            <p className="page-subtitle text-sm sm:text-base">Organize products by physical location</p>
+          </div>
+          {isOwner && (
+            <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+              <DialogTrigger asChild>
+                <Button onClick={resetForm} className="w-full sm:w-auto">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Rack
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="w-[95vw] sm:w-auto max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add New Rack</DialogTitle>
               </DialogHeader>
@@ -166,17 +167,22 @@ export default function Racks() {
                     placeholder="e.g., Pain Relief Section"
                   />
                 </div>
-                <Button onClick={handleAdd} className="w-full">
-                  Add Rack
-                </Button>
+                <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)} className="w-full sm:w-auto">
+                    Cancel
+                  </Button>
+                  <Button onClick={handleAdd} className="w-full sm:w-auto">
+                    Add Rack
+                  </Button>
+                </div>
               </div>
             </DialogContent>
           </Dialog>
         )}
-      </div>
+        </div>
 
-      {/* Grid View */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 mb-8">
+        {/* Grid View */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 mb-6 sm:mb-8">
         {racks.map((rack) => {
           const rackProductCount = products.filter(p => p.rack_id === rack.id).length;
           return (
@@ -232,14 +238,14 @@ export default function Racks() {
         })}
       </div>
 
-      {/* Table View */}
-      <Card>
-        <CardHeader>
-          <CardTitle>All Racks</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
+        {/* Table View */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg sm:text-xl">All Racks</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="table-header">Color</TableHead>
@@ -294,9 +300,9 @@ export default function Racks() {
         </CardContent>
       </Card>
 
-      {/* Products in Rack Dialog */}
-      <Dialog open={!!selectedRackId} onOpenChange={(open) => !open && setSelectedRackId(null)}>
-        <DialogContent className="max-w-4xl max-h-[80vh]">
+        {/* Products in Rack Dialog */}
+        <Dialog open={!!selectedRackId} onOpenChange={(open) => !open && setSelectedRackId(null)}>
+          <DialogContent className="max-w-4xl w-[95vw] sm:w-auto max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <div 
@@ -376,51 +382,59 @@ export default function Racks() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Dialog */}
-      <Dialog open={!!editingRack} onOpenChange={() => setEditingRack(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Rack</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Rack Name</Label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., A, B, C"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Color</Label>
-              <div className="flex flex-wrap gap-2">
-                {COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className={`w-8 h-8 rounded-full border-2 transition-all ${
-                      color === c ? 'border-foreground scale-110' : 'border-transparent'
-                    }`}
-                    style={{ backgroundColor: c }}
-                    onClick={() => setColor(c)}
-                  />
-                ))}
+        {/* Edit Dialog */}
+        <Dialog open={!!editingRack} onOpenChange={() => setEditingRack(null)}>
+          <DialogContent className="w-[95vw] sm:w-auto max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Rack</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Rack Name</Label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., A, B, C"
+                  className="h-10 sm:h-9"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Color</Label>
+                <div className="flex flex-wrap gap-2">
+                  {COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      className={`w-8 h-8 rounded-full border-2 transition-all ${
+                        color === c ? 'border-foreground scale-110' : 'border-transparent'
+                      }`}
+                      style={{ backgroundColor: c }}
+                      onClick={() => setColor(c)}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Input
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="e.g., Pain Relief Section"
+                  className="h-10 sm:h-9"
+                />
+              </div>
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => setEditingRack(null)} className="w-full sm:w-auto">
+                  Cancel
+                </Button>
+                <Button onClick={handleUpdate} className="w-full sm:w-auto">
+                  Save Changes
+                </Button>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Input
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g., Pain Relief Section"
-              />
-            </div>
-            <Button onClick={handleUpdate} className="w-full">
-              Save Changes
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      </div>
     </MainLayout>
   );
 }
