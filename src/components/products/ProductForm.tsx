@@ -14,16 +14,48 @@ interface ProductFormProps {
   onCancel: () => void;
 }
 
+// Organized categories for pharmacy products
+// Grouped logically for easy navigation and filtering
 const categories = [
+  // Pain & Fever Management
   'Pain Relief',
+  'Fever',
+  
+  // Respiratory & Cold
+  'Cold, Flu & Cough',
+  'Respiratory / Asthma',
+  
+  // Infections & Antibiotics
   'Antibiotics',
-  'Vitamins',
-  'Cold & Flu',
-  'Skin Care',
-  'First Aid',
-  'Digestive',
+  'Antifungal',
+  'Antibiotic Creams & Ointments',
+  
+  // Digestive Health
+  'Digestive & Stomach',
+  'Acidity & Gas',
+  'Diarrhea & Constipation',
+  
+  // Chronic Conditions
+  'Diabetes',
+  'Blood Pressure & Heart',
+  
+  // Allergy & Immune
   'Allergy',
-  'Other',
+  
+  // Supplements & Wellness
+  'Vitamins & Supplements',
+  
+  // Topical & External Care
+  'Skin Care',
+  'Eye & Ear Care',
+  
+  // Special Populations
+  'Children / Pediatric',
+  "Women's Health",
+  
+  // General & Emergency
+  'First Aid',
+  'OTC (General Medicines)',
 ];
 
 const dosageForms = [
@@ -35,6 +67,19 @@ const dosageForms = [
   'Ointment',
   'Drops',
   'Inhaler',
+  'Suspension',
+  'Solution',
+  'Powder',
+  'Granules',
+  'Gel',
+  'Lotion',
+  'Spray',
+  'Patch',
+  'Suppository',
+  'Eye Drops',
+  'Ear Drops',
+  'Nasal Drops',
+  'Sachet',
   'Other',
 ];
 

@@ -130,7 +130,7 @@ export default function PointOfSale() {
       : 0; // Fallback to 0 if no batches (shouldn't happen if stock > 0)
 
     if (existingItem) {
-      setCart(cart.map((item) =>
+      setCart((prevCart) => prevCart.map((item) =>
         item.productId === product.id
           ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * item.unitPrice }
           : item
@@ -147,7 +147,7 @@ export default function PointOfSale() {
         }
       }
 
-      setCart([...cart, {
+      setCart((prevCart) => [...prevCart, {
         productId: product.id,
         productName: `${product.name}${product.strength ? ` ${product.strength}` : ''}`,
         quantity: 1,
@@ -180,7 +180,7 @@ export default function PointOfSale() {
       return;
     }
 
-    setCart(cart.map((item) =>
+    setCart((prevCart) => prevCart.map((item) =>
       item.productId === productId
         ? { ...item, quantity, total: quantity * item.unitPrice }
         : item
@@ -188,7 +188,7 @@ export default function PointOfSale() {
   };
 
   const handleRemoveItem = (productId: string) => {
-    setCart(cart.filter((item) => item.productId !== productId));
+    setCart((prevCart) => prevCart.filter((item) => item.productId !== productId));
   };
 
   const handleClearCart = () => {
@@ -305,18 +305,18 @@ export default function PointOfSale() {
 
   return (
     <MainLayout>
-      <div className="p-4 sm:p-6 lg:p-8 min-h-[calc(100vh-4rem)] lg:min-h-[calc(100vh-2rem)]">
-        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-full">
+      <div className="p-4 sm:p-6 lg:p-8 h-[calc(100vh-4rem)] lg:h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 flex-1 min-h-0">
           {/* Products Grid */}
-          <div className="flex-1 flex flex-col min-h-0">
-            <div className="page-header mb-4 sm:mb-8">
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <div className="page-header mb-4 sm:mb-8 flex-shrink-0">
               <h1 className="page-title text-2xl sm:text-3xl">Point of Sale</h1>
               <p className="page-subtitle text-sm sm:text-base">Scan barcode or select products • FEFO auto-deduction active</p>
             </div>
 
             {/* Expiring Soon Alert */}
             {expiringBatches.length > 0 && !dismissedExpiringAlert && (
-              <div className="mb-4 p-3 bg-warning/10 border border-warning/30 rounded-xl flex items-start sm:items-center gap-3 relative">
+              <div className="mb-4 p-3 bg-warning/10 border border-warning/30 rounded-xl flex items-start sm:items-center gap-3 relative flex-shrink-0">
                 <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5 sm:mt-0" />
                 <p className="text-xs sm:text-sm text-warning flex-1">
                   <strong>{expiringBatches.length} batch(es)</strong> expiring within 30 days. These will be sold first (FEFO).
@@ -331,7 +331,7 @@ export default function PointOfSale() {
               </div>
             )}
 
-            <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4">
+            <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4 flex-shrink-0">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -405,7 +405,7 @@ export default function PointOfSale() {
           </div>
 
           {/* Cart */}
-          <div className="w-full lg:w-96 cart-panel flex flex-col max-h-[50vh] lg:max-h-none lg:sticky lg:top-4">
+          <div className="w-full lg:w-96 cart-panel flex flex-col max-h-[50vh] lg:max-h-[calc(100vh-2rem)] lg:sticky lg:top-4 lg:self-start">
             <div className="p-4 sm:p-5 border-b border-border flex-shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
