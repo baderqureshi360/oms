@@ -56,6 +56,13 @@ const categories = [
   // General & Emergency
   'First Aid',
   'OTC (General Medicines)',
+  
+  // Additional Categories
+  'Insecticide',
+  'Depression and Anxiety Disorders',
+  'Liver Diseases',
+  'Mouth Ulcer',
+  'Other',
 ];
 
 const dosageForms = [
