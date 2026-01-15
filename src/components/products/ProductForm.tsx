@@ -62,6 +62,10 @@ const categories = [
   'Depression and Anxiety Disorders',
   'Liver Diseases',
   'Mouth Ulcer',
+  'Nasal Drops',
+  'Anti Scabies',
+  'Anxiolytic/Anti Depresent',
+  'Anxilytic/ Antidepressant',
   'Other',
 ];
 
