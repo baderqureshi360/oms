@@ -1,18 +1,27 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatPKR } from '@/lib/currency';
 import { Badge } from '@/components/ui/badge';
-import { Search } from 'lucide-react';
+import { Search, Check, ChevronsUpDown } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useDebounce } from '@/hooks/useDebounce';
+import { cn } from '@/lib/utils';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Table,
   TableBody,
@@ -27,7 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useProducts } from '@/hooks/useProducts';
+import { useProducts, type Product } from '@/hooks/useProducts';
 import { useSales } from '@/hooks/useSales';
 import { Plus, PackagePlus, Package, Layers } from 'lucide-react';
 import { format, parseISO, isBefore, addDays, startOfToday } from 'date-fns';
@@ -37,7 +46,13 @@ export default function StockPurchases() {
   const { products, batches, getProductStock, addBatch } = useProducts();
   const { sales } = useSales();
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 500);
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedProductObj, setSelectedProductObj] = useState<Product | null>(null);
+
   const [formData, setFormData] = useState({
     productId: '',
     batchNumber: '',
@@ -49,27 +64,39 @@ export default function StockPurchases() {
   });
 
   const today = startOfToday();
-  const selectedProduct = products.find((p) => p.id === formData.productId);
 
-  // Filter products by search term (name, barcode, and salt_formula)
-  // Note: Stock Purchases shows all products (including disabled) for inventory management
-  // but we filter them from search results for consistency
-  const filteredProducts = products.filter((product) => {
-    if (!product || !product.id) return false;
-    
-    if (search && search.trim() !== '') {
-      const searchLower = search.toLowerCase().trim();
-      const matchesName = product.name?.toLowerCase().includes(searchLower) || false;
-      const matchesBarcode = product.barcode?.toLowerCase().includes(searchLower) || false;
-      const matchesSaltFormula = product.salt_formula?.toLowerCase().includes(searchLower) || false;
-      
-      if (!matchesName && !matchesBarcode && !matchesSaltFormula) {
-        return false;
+  // Perform server-side search or use default products
+  useEffect(() => {
+    const performSearch = async () => {
+      if (!debouncedSearch || debouncedSearch.trim() === '') {
+        setSearchResults(products);
+        return;
       }
-    }
-    
-    return true;
-  });
+
+      setIsSearching(true);
+      try {
+        const trimmedSearch = debouncedSearch.trim();
+        const { data, error } = await supabase
+          .from('products')
+          .select('*, rack:racks(id, name, color)')
+          .or(`name.ilike.%${trimmedSearch}%,salt_formula.ilike.%${trimmedSearch}%,barcode.eq.${trimmedSearch}`)
+          .order('name');
+        
+        if (error) throw error;
+        setSearchResults(data || []);
+      } catch (err) {
+        console.error('Search failed:', err);
+        toast.error('Failed to search products');
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    performSearch();
+  }, [debouncedSearch, products]);
+
+  const selectedProduct = selectedProductObj || searchResults.find((p) => p.id === formData.productId) || products.find((p) => p.id === formData.productId);
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,6 +158,7 @@ export default function StockPurchases() {
       });
 
       setFormData({ productId: '', batchNumber: '', quantity: '', costPrice: '', sellingPrice: '', expiryDate: '', supplier: '' });
+      setSelectedProductObj(null);
       setIsFormOpen(false);
     }
   };
@@ -279,43 +307,74 @@ export default function StockPurchases() {
               <div className="space-y-2">
                 <Label htmlFor="product">Product</Label>
                 <div className="space-y-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search by name, barcode, or salt/formula..."
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      className="pl-10 h-10 sm:h-9"
-                    />
-                  </div>
-                  <Select
-                    value={formData.productId}
-                    onValueChange={(value) => {
-                      const product = products.find((p) => p.id === value);
-                      // Get latest batch price if available, otherwise leave empty
-                      const latestBatch = batches
-                        .filter(b => b.product_id === value)
-                        .sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime())[0];
-                      setFormData({
-                        ...formData,
-                        productId: value,
-                        costPrice: latestBatch?.cost_price.toString() || '',
-                        sellingPrice: latestBatch?.selling_price.toString() || '',
-                        supplier: latestBatch?.supplier || '',
-                      });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a product" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredProducts.map((product) => (
-                        <SelectItem key={product.id} value={product.id}>
-                          {product.name} {product.strength && `(${product.strength})`} — Stock: {getProductStock(product.id)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={open} onOpenChange={setOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                         variant="outline"
+                         role="combobox"
+                         aria-expanded={open}
+                         className="w-full justify-between"
+                       >
+                         {selectedProduct
+                           ? selectedProduct.name
+                           : "Select product..."}
+                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                       </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                      <Command shouldFilter={false}>
+                        <CommandInput 
+                          placeholder="Search by name, barcode, or salt/formula..." 
+                          value={search}
+                          onValueChange={setSearch}
+                        />
+                        <CommandList>
+                          {isSearching ? (
+                            <div className="py-6 text-center text-sm text-muted-foreground">Searching...</div>
+                          ) : searchResults.length === 0 ? (
+                            <CommandEmpty>No product found.</CommandEmpty>
+                          ) : (
+                            <CommandGroup>
+                              {searchResults.map((product) => (
+                                <CommandItem
+                                  key={product.id}
+                                  value={product.name}
+                                  onSelect={() => {
+                                    const value = product.id;
+                                    // Get latest batch price if available, otherwise leave empty
+                                    const latestBatch = batches
+                                      .filter(b => b.product_id === value)
+                                      .sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime())[0];
+                                    
+                                    setSelectedProductObj(product);
+                                    setFormData({
+                                      ...formData,
+                                      productId: value,
+                                      costPrice: latestBatch?.cost_price.toString() || '',
+                                      sellingPrice: latestBatch?.selling_price.toString() || '',
+                                      supplier: latestBatch?.supplier || '',
+                                    });
+                                    setOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      formData.productId === product.id ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  <div className="flex flex-col">
+                                    <span>{product.name} {product.strength && `(${product.strength})`}</span>
+                                    <span className="text-xs text-muted-foreground">Stock: {getProductStock(product.id)}</span>
+                                  </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          )}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
 

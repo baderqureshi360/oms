@@ -41,6 +41,7 @@ export interface StockBatch {
 
 export function useProducts() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [batches, setBatches] = useState<StockBatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +49,22 @@ export function useProducts() {
 
   // Maximum number of records to fetch per query (pagination limit)
   const MAX_RECORDS_PER_QUERY = 1000;
+
+  const fetchTotalCount = useCallback(async () => {
+    try {
+      const { count, error } = await supabase
+        .from('products')
+        .select('*', { count: 'exact', head: true });
+      
+      if (error) throw error;
+      
+      if (count !== null) {
+        setTotalCount(count);
+      }
+    } catch (err) {
+      console.error('Error fetching total product count:', err);
+    }
+  }, []);
 
   const fetchProducts = useCallback(async (searchTerm?: string, rackId?: string) => {
     try {
@@ -73,9 +90,13 @@ export function useProducts() {
         query = query.eq('rack_id', rackId);
       }
 
-      const { data, error: queryError } = await query
-        .order('name')
-        .limit(MAX_RECORDS_PER_QUERY);
+      // Only apply limit if no search term is present
+      // This ensures search searches the full dataset
+      if (!searchTerm || searchTerm.trim() === '') {
+        query = query.limit(MAX_RECORDS_PER_QUERY);
+      }
+
+      const { data, error: queryError } = await query.order('name');
 
       if (queryError) {
         throw queryError;
@@ -121,14 +142,14 @@ export function useProducts() {
     setLoading(true);
     setError(null);
     try {
-      await Promise.all([fetchProducts(undefined, undefined), fetchBatches()]);
+      await Promise.all([fetchProducts(undefined, undefined), fetchBatches(), fetchTotalCount()]);
     } catch (err) {
       // Errors are handled in individual fetch functions
       console.error('Error in fetchAll:', err);
     } finally {
       setLoading(false);
     }
-  }, [fetchProducts, fetchBatches]);
+  }, [fetchProducts, fetchBatches, fetchTotalCount]);
 
   useEffect(() => {
     fetchAll();
@@ -797,6 +818,7 @@ export function useProducts() {
 
   return {
     products,
+    totalCount,
     batches,
     loading,
     error,

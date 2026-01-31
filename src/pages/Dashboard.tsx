@@ -17,7 +17,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 
 export default function Dashboard() {
-  const { products, getProductStock, getExpiringBatches, getExpiredBatches } = useProducts();
+  const { products, totalCount, getProductStock, getExpiringBatches, getExpiredBatches } = useProducts();
   const { sales } = useSales();
   const today = startOfToday();
   const [dismissedExpiredAlert, setDismissedExpiredAlert] = useState(false);
@@ -48,7 +48,7 @@ export default function Dashboard() {
 
     return {
       todaySales,
-      totalProducts: safeProducts.length,
+      totalProducts: totalCount > 0 ? totalCount : safeProducts.length,
       lowStockCount: lowStockProducts.length,
       outOfStockCount: outOfStockProducts.length,
       expiringCount: safeExpiringBatches.length,
@@ -56,7 +56,7 @@ export default function Dashboard() {
       lowStockProducts,
       outOfStockProducts,
     };
-  }, [products, sales, today, getProductStock, expiringBatches, expiredBatches]);
+  }, [products, totalCount, sales, today, getProductStock, expiringBatches, expiredBatches]);
 
   const recentSales = useMemo(() => {
     const safeSales = Array.isArray(sales) ? sales : [];
