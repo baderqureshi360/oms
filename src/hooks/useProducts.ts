@@ -811,6 +811,42 @@ export function useProducts() {
     }
   };
 
+  const updateBatch = async (batchId: string, updates: Partial<StockBatch>) => {
+    try {
+      if (!user?.id) {
+        toast.error('You must be logged in to update stock batches');
+        return null;
+      }
+
+      // Filter out fields that shouldn't be updated via this method if strictly enforced,
+      // but the UI will control what is passed.
+      const { data, error } = await supabase
+        .from('stock_batches')
+        .update(updates)
+        .eq('id', batchId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (!data) {
+        toast.error('Stock batch was not updated');
+        return null;
+      }
+
+      setBatches((prev) =>
+        prev.map((b) => (b.id === batchId ? data : b))
+      );
+      toast.success('Stock purchase updated');
+      return data;
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update stock batch';
+      console.error('Error updating batch:', err);
+      toast.error(errorMessage);
+      return null;
+    }
+  };
+
   // Memoize refetch function to prevent unnecessary re-renders in consuming components
   const stableRefetch = useCallback(() => {
     return fetchAll();
@@ -834,6 +870,7 @@ export function useProducts() {
     getExpiredBatches,
     generateBarcode,
     addBatch,
+    updateBatch,
     updateBatchQuantity,
     refetch: stableRefetch,
     fetchProducts, // Expose fetchProducts for server-side search if needed

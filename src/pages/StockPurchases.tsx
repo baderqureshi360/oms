@@ -36,16 +36,29 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useProducts, type Product } from '@/hooks/useProducts';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useProducts, type Product, type StockBatch } from '@/hooks/useProducts';
 import { useSales } from '@/hooks/useSales';
-import { Plus, PackagePlus, Package, Layers } from 'lucide-react';
+import { Plus, PackagePlus, Package, Layers, Pencil } from 'lucide-react';
 import { format, parseISO, isBefore, addDays, startOfToday } from 'date-fns';
 import { toast } from 'sonner';
 
 export default function StockPurchases() {
-  const { products, batches, getProductStock, addBatch } = useProducts();
+  const { products, batches, getProductStock, addBatch, updateBatch } = useProducts();
   const { sales } = useSales();
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingBatch, setEditingBatch] = useState<StockBatch | null>(null);
+  const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState<any>(null);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 500);
@@ -95,6 +108,21 @@ export default function StockPurchases() {
     performSearch();
   }, [debouncedSearch, products]);
 
+  const handleEditClick = (batch: StockBatch) => {
+    setEditingBatch(batch);
+    setFormData({
+      productId: batch.product_id,
+      batchNumber: batch.batch_number,
+      quantity: batch.quantity.toString(),
+      costPrice: batch.cost_price.toString(),
+      sellingPrice: batch.selling_price.toString(),
+      expiryDate: batch.expiry_date,
+      supplier: batch.supplier || '',
+    });
+    setSelectedProductObj(products.find(p => p.id === batch.product_id) || null);
+    setIsFormOpen(true);
+  };
+
   const selectedProduct = selectedProductObj || searchResults.find((p) => p.id === formData.productId) || products.find((p) => p.id === formData.productId);
 
 
@@ -141,6 +169,16 @@ export default function StockPurchases() {
       return;
     }
 
+    if (editingBatch) {
+      setPendingUpdate({
+        product_id: formData.productId,
+        quantity,
+        cost_price: costPrice,
+      });
+      setShowUpdateConfirm(true);
+      return;
+    }
+
     const result = await addBatch({
       product_id: formData.productId,
       batch_number: formData.batchNumber.trim(),
@@ -161,6 +199,21 @@ export default function StockPurchases() {
       setSelectedProductObj(null);
       setIsFormOpen(false);
     }
+  };
+
+  const handleConfirmUpdate = async () => {
+    if (!editingBatch || !pendingUpdate) return;
+    
+    const result = await updateBatch(editingBatch.id, pendingUpdate);
+
+    if (result) {
+      setFormData({ productId: '', batchNumber: '', quantity: '', costPrice: '', sellingPrice: '', expiryDate: '', supplier: '' });
+      setSelectedProductObj(null);
+      setEditingBatch(null);
+      setIsFormOpen(false);
+    }
+    setShowUpdateConfirm(false);
+    setPendingUpdate(null);
   };
 
   // Sort batches by purchase date (most recent first)
@@ -190,7 +243,12 @@ export default function StockPurchases() {
             <h1 className="page-title text-2xl sm:text-3xl">Stock Purchases</h1>
             <p className="page-subtitle text-sm sm:text-base">Record batch-wise inventory purchases with expiry tracking</p>
           </div>
-          <Button onClick={() => setIsFormOpen(true)} className="shadow-sm w-full sm:w-auto">
+          <Button onClick={() => {
+            setEditingBatch(null);
+            setFormData({ productId: '', batchNumber: '', quantity: '', costPrice: '', sellingPrice: '', expiryDate: '', supplier: '' });
+            setSelectedProductObj(null);
+            setIsFormOpen(true);
+          }} className="shadow-sm w-full sm:w-auto">
             <Plus className="w-4 h-4 mr-2" />
             Add Purchase
           </Button>
@@ -253,6 +311,7 @@ export default function StockPurchases() {
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead>Expiry</TableHead>
                 <TableHead>Date</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -279,6 +338,17 @@ export default function StockPurchases() {
                     <TableCell className="text-muted-foreground">
                       {format(new Date(batch.purchase_date), 'MMM d, yyyy')}
                     </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEditClick(batch)}
+                        className="h-8 w-8 text-muted-foreground hover:text-primary"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Edit</span>
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -301,7 +371,7 @@ export default function StockPurchases() {
         <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
           <DialogContent className="max-w-lg w-[95vw] sm:w-auto max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Record Stock Purchase</DialogTitle>
+              <DialogTitle>{editingBatch ? 'Edit Stock Purchase' : 'Record Stock Purchase'}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
@@ -342,6 +412,12 @@ export default function StockPurchases() {
                                   onSelect={() => {
                                     const value = product.id;
                                     // Get latest batch price if available, otherwise leave empty
+                                    // If editing, we probably don't want to overwrite the price unless the user wants to
+                                    // But if they select a new product, maybe we should?
+                                    // For now, I'll stick to existing behavior which is setting price from latest batch
+                                    // But if editing, maybe we should keep the current price if valid?
+                                    // Actually if I change product, the price is likely different.
+                                    
                                     const latestBatch = batches
                                       .filter(b => b.product_id === value)
                                       .sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime())[0];
@@ -350,6 +426,9 @@ export default function StockPurchases() {
                                     setFormData({
                                       ...formData,
                                       productId: value,
+                                      // If we are editing, we might want to keep the current price if we are just correcting the product
+                                      // But if we are changing the product entirely, maybe we want the default price.
+                                      // Let's stick to default behavior for now.
                                       costPrice: latestBatch?.cost_price.toString() || '',
                                       sellingPrice: latestBatch?.selling_price.toString() || '',
                                       supplier: latestBatch?.supplier || '',
@@ -380,23 +459,27 @@ export default function StockPurchases() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="batchNumber">Batch Number *</Label>
+                  <Label htmlFor="batchNumber">Batch Number {editingBatch ? '(Read-only)' : '*'}</Label>
                   <Input
                     id="batchNumber"
                     value={formData.batchNumber}
                     onChange={(e) => setFormData({ ...formData, batchNumber: e.target.value })}
                     placeholder="e.g., PCM-2024-001"
                     required
+                    readOnly={!!editingBatch}
+                    className={editingBatch ? "bg-muted" : ""}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="expiryDate">Expiry Date *</Label>
+                  <Label htmlFor="expiryDate">Expiry Date {editingBatch ? '(Read-only)' : '*'}</Label>
                   <Input
                     id="expiryDate"
                     type="date"
                     value={formData.expiryDate}
                     onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
                     required
+                    readOnly={!!editingBatch}
+                    className={editingBatch ? "bg-muted" : ""}
                   />
                 </div>
               </div>
@@ -425,7 +508,7 @@ export default function StockPurchases() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="sellingPrice">Sell (Rs.)</Label>
+                  <Label htmlFor="sellingPrice">Sell (Rs.) {editingBatch ? '(Read-only)' : ''}</Label>
                   <Input
                     id="sellingPrice"
                     type="number"
@@ -433,17 +516,21 @@ export default function StockPurchases() {
                     value={formData.sellingPrice}
                     onChange={(e) => setFormData({ ...formData, sellingPrice: e.target.value })}
                     required
+                    readOnly={!!editingBatch}
+                    className={editingBatch ? "bg-muted" : ""}
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="supplier">Supplier</Label>
+                <Label htmlFor="supplier">Supplier {editingBatch ? '(Read-only)' : ''}</Label>
                 <Input
                   id="supplier"
                   value={formData.supplier}
                   onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
                   placeholder="Leave empty to use default supplier"
+                  readOnly={!!editingBatch}
+                  className={editingBatch ? "bg-muted" : ""}
                 />
               </div>
 
@@ -462,11 +549,28 @@ export default function StockPurchases() {
                 <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)} className="w-full sm:w-auto">
                   Cancel
                 </Button>
-                <Button type="submit" className="w-full sm:w-auto">Record Purchase</Button>
+                <Button type="submit" className="w-full sm:w-auto">
+                  {editingBatch ? 'Update Purchase' : 'Record Purchase'}
+                </Button>
               </div>
             </form>
           </DialogContent>
         </Dialog>
+
+        <AlertDialog open={showUpdateConfirm} onOpenChange={setShowUpdateConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Update Stock Purchase?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to update this stock purchase? This will modify the inventory levels and cost calculations.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setShowUpdateConfirm(false)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleConfirmUpdate}>Update</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );
