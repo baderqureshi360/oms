@@ -87,13 +87,19 @@ export default function Products() {
       // Apply search filter
       if (debouncedSearch && debouncedSearch.trim() !== '') {
         const searchLower = debouncedSearch.toLowerCase().trim();
-        const matchesName = product.name?.toLowerCase().includes(searchLower) || false;
-        const matchesBarcode = product.barcode?.toLowerCase().includes(searchLower) || false;
-        const matchesCategory = product.category?.toLowerCase().includes(searchLower) || false;
-        const matchesSaltFormula = product.salt_formula?.toLowerCase().includes(searchLower) || false;
+        const isNumeric = /^\d+$/.test(searchLower);
 
-        if (!matchesName && !matchesBarcode && !matchesCategory && !matchesSaltFormula) {
-          return false;
+        if (isNumeric) {
+          // Numeric -> treat as barcode
+          // Support exact match and partial match (for "searchable from first character")
+          return product.barcode?.toLowerCase().startsWith(searchLower) || false;
+        } else {
+          // Text -> treat as product name (and keep existing category/salt search)
+          const matchesName = product.name?.toLowerCase().includes(searchLower) || false;
+          const matchesCategory = product.category?.toLowerCase().includes(searchLower) || false;
+          const matchesSaltFormula = product.salt_formula?.toLowerCase().includes(searchLower) || false;
+
+          return matchesName || matchesCategory || matchesSaltFormula;
         }
       }
 
@@ -191,7 +197,7 @@ export default function Products() {
               <div className="relative flex-1 w-full">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search by name, salt/formula, barcode, or category..."
+                  placeholder="Search by product name or scan barcode..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   onKeyDown={(e) => {
@@ -244,9 +250,6 @@ export default function Products() {
                   </Button>
                 )}
               </div>
-            </div>
-            <div>
-              <BarcodeScanner onScan={handleBarcodeScan} />
             </div>
           </div>
 

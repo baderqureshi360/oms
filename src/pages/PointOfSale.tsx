@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { BarcodeScanner } from '@/components/pos/BarcodeScanner';
+import { UnifiedSearchBar } from '@/components/ui/UnifiedSearchBar';
 import { CartItem } from '@/components/pos/CartItem';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,13 +77,16 @@ export default function PointOfSale() {
       
       if (debouncedSearch && debouncedSearch.trim() !== '') {
         const searchLower = debouncedSearch.toLowerCase().trim();
-        const matchesName = product.name?.toLowerCase().includes(searchLower) || false;
-        const matchesBarcode = product.barcode?.toLowerCase().includes(searchLower) || false;
-        // Check for salt_formula if it exists on the product (for database products)
-        const matchesSaltFormula = (product as ProductType).salt_formula?.toLowerCase().includes(searchLower) || false;
+        const isNumeric = /^\d+$/.test(searchLower);
         
-        if (!matchesName && !matchesBarcode && !matchesSaltFormula) {
-          return false;
+        if (isNumeric) {
+          // If numeric -> treat as barcode
+          return product.barcode?.toLowerCase().includes(searchLower) || false;
+        } else {
+          // If text -> treat as product name (or salt formula to preserve existing functionality)
+          const matchesName = product.name?.toLowerCase().includes(searchLower) || false;
+          const matchesSaltFormula = (product as ProductType).salt_formula?.toLowerCase().includes(searchLower) || false;
+          return matchesName || matchesSaltFormula;
         }
       }
       
@@ -169,6 +172,17 @@ export default function PointOfSale() {
       description: productDetails,
       duration: 4000,
     });
+  };
+
+  const handleSearchEnter = (value: string) => {
+    // If numeric, check if it's a barcode scan
+    if (/^\d+$/.test(value)) {
+      const product = getProductByBarcode(value);
+      if (product) {
+        handleScan(value);
+        setSearch(''); // Clear search after successful scan
+      }
+    }
   };
 
   const handleUpdateQuantity = (productId: string, quantity: number) => {
@@ -331,17 +345,14 @@ export default function PointOfSale() {
               </div>
             )}
 
-            <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4 flex-shrink-0">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by name, barcode, or salt/formula..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10 h-10 sm:h-9"
-                />
-              </div>
-              <BarcodeScanner onScan={handleScan} />
+            <div className="mb-4 sm:mb-6 flex-shrink-0">
+              <UnifiedSearchBar
+                value={search}
+                onChange={setSearch}
+                onEnter={handleSearchEnter}
+                placeholder="Search by name or scan barcode..."
+                autoFocus={true}
+              />
             </div>
 
             <div className="flex-1 overflow-auto pr-0 sm:pr-2 min-h-0">

@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { UnifiedSearchBar } from '@/components/ui/UnifiedSearchBar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -62,6 +63,8 @@ export default function StockPurchases() {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 500);
+  const [tableSearch, setTableSearch] = useState('');
+  const debouncedTableSearch = useDebounce(tableSearch, 300);
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedProductObj, setSelectedProductObj] = useState<Product | null>(null);
@@ -221,6 +224,21 @@ export default function StockPurchases() {
     (a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime()
   );
 
+  const filteredBatches = useMemo(() => {
+    if (!debouncedTableSearch) return sortedBatches;
+    const searchLower = debouncedTableSearch.toLowerCase().trim();
+    const isNumeric = /^\d+$/.test(searchLower);
+    
+    return sortedBatches.filter((batch) => {
+       const product = products.find(p => p.id === batch.product_id);
+       if (isNumeric) {
+         return product?.barcode?.toLowerCase().includes(searchLower) || false;
+       } else {
+         return product?.name?.toLowerCase().includes(searchLower) || false;
+       }
+    });
+  }, [sortedBatches, debouncedTableSearch, products]);
+
   const getExpiryBadge = (expiryDate: string) => {
     const expiry = parseISO(expiryDate);
     const isExpired = isBefore(expiry, today);
@@ -252,6 +270,16 @@ export default function StockPurchases() {
             <Plus className="w-4 h-4 mr-2" />
             Add Purchase
           </Button>
+        </div>
+
+        {/* Search Bar */}
+        <div className="mb-6">
+           <UnifiedSearchBar
+              value={tableSearch}
+              onChange={setTableSearch}
+              placeholder="Search batches by product name or barcode..."
+              autoFocus={false}
+            />
         </div>
 
         {/* Batch Summary */}
@@ -315,7 +343,7 @@ export default function StockPurchases() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedBatches.map((batch) => {
+              {filteredBatches.map((batch) => {
                 const product = products.find(p => p.id === batch.product_id);
                 return (
                   <TableRow key={batch.id} className="hover:bg-muted/30">
@@ -352,7 +380,7 @@ export default function StockPurchases() {
                   </TableRow>
                 );
               })}
-              {sortedBatches.length === 0 && (
+              {filteredBatches.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-12">
                     <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mx-auto mb-4">
