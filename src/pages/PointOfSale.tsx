@@ -49,7 +49,7 @@ export default function PointOfSale() {
   const [pendingPaymentMethod, setPendingPaymentMethod] = useState<'cash' | 'card' | 'mobile' | null>(null);
   const [search, setSearch] = useState('');
   const [dismissedExpiringAlert, setDismissedExpiringAlert] = useState(false);
-  const { products, getProductByBarcode, getProductStock, getAvailableBatches, getExpiringBatches, refetch } = useProducts();
+  const { products, getProductByBarcode, getProductStock, getAvailableBatches, getExpiringBatches, refetch, fetchProducts } = useProducts();
   const { processSale } = useSales();
   const { receiptData, setReceiptData } = useReceipt();
   
@@ -65,6 +65,11 @@ export default function PointOfSale() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount - real-time subscriptions handle updates
 
+  // Server-side search when search term changes
+  useEffect(() => {
+    fetchProducts(debouncedSearch);
+  }, [debouncedSearch, fetchProducts]);
+
   // Memoize filtered products calculation to avoid recalculation on every render
   const filteredProducts = useMemo(() => {
     if (!Array.isArray(products)) return [];
@@ -72,27 +77,9 @@ export default function PointOfSale() {
     return products.filter((product) => {
       if (!product || !product.id) return false;
       
-      // Filter out disabled products in POS
-      if (product.is_active === false) return false;
-      
-      if (debouncedSearch && debouncedSearch.trim() !== '') {
-        const searchLower = debouncedSearch.toLowerCase().trim();
-        const isNumeric = /^\d+$/.test(searchLower);
-        
-        if (isNumeric) {
-          // If numeric -> treat as barcode
-          return product.barcode?.toLowerCase().includes(searchLower) || false;
-        } else {
-          // If text -> treat as product name (or salt formula to preserve existing functionality)
-          const matchesName = product.name?.toLowerCase().includes(searchLower) || false;
-          const matchesSaltFormula = (product as ProductType).salt_formula?.toLowerCase().includes(searchLower) || false;
-          return matchesName || matchesSaltFormula;
-        }
-      }
-      
       return true;
     });
-  }, [products, debouncedSearch]);
+  }, [products]);
 
   const handleScan = (barcode: string) => {
     const product = getProductByBarcode(barcode);

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ProductForm } from '@/components/products/ProductForm';
 import { BarcodeScanner } from '@/components/pos/BarcodeScanner';
@@ -39,7 +39,7 @@ import { format, parseISO, isBefore, addDays, startOfToday } from 'date-fns';
 import { toast } from 'sonner';
 
 export default function Products() {
-  const { products, batches, loading, addProduct, updateProduct, disableProduct, enableProduct, getProductStock, getProductBatches, getProductByBarcode } = useProducts();
+  const { products, batches, loading, addProduct, updateProduct, disableProduct, enableProduct, getProductStock, getProductBatches, getProductByBarcode, fetchProducts } = useProducts();
   const { racks } = useRacks();
   const [search, setSearch] = useState('');
   const [selectedRackId, setSelectedRackId] = useState<string>('');
@@ -74,38 +74,12 @@ export default function Products() {
   // Debounce search input to reduce filtering operations
   const debouncedSearch = useDebounce(search, 300);
 
-  // Memoize filtered products calculation to avoid recalculation on every render
-  const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
-      if (!product) return false;
+  // Server-side search/filter
+  useEffect(() => {
+    fetchProducts(debouncedSearch, selectedRackId);
+  }, [debouncedSearch, selectedRackId, fetchProducts]);
 
-      // Apply rack filter
-      if (selectedRackId && product.rack_id !== selectedRackId) {
-        return false;
-      }
-
-      // Apply search filter
-      if (debouncedSearch && debouncedSearch.trim() !== '') {
-        const searchLower = debouncedSearch.toLowerCase().trim();
-        const isNumeric = /^\d+$/.test(searchLower);
-
-        if (isNumeric) {
-          // Numeric -> treat as barcode
-          // Support exact match and partial match (for "searchable from first character")
-          return product.barcode?.toLowerCase().startsWith(searchLower) || false;
-        } else {
-          // Text -> treat as product name (and keep existing category/salt search)
-          const matchesName = product.name?.toLowerCase().includes(searchLower) || false;
-          const matchesCategory = product.category?.toLowerCase().includes(searchLower) || false;
-          const matchesSaltFormula = product.salt_formula?.toLowerCase().includes(searchLower) || false;
-
-          return matchesName || matchesCategory || matchesSaltFormula;
-        }
-      }
-
-      return true;
-    });
-  }, [products, selectedRackId, debouncedSearch]);
+  const filteredProducts = products;
 
   const handleSubmit = async (data: Omit<Product, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'rack'>) => {
     if (editingProduct) {

@@ -80,9 +80,9 @@ export function useProducts() {
       // Apply search filter if provided
       if (searchTerm && searchTerm.trim() !== '') {
         const trimmedSearch = searchTerm.trim();
-        // Search by name, salt_formula (case-insensitive partial match) and barcode (exact match)
+        // Search by name (prefix match) and barcode (prefix match)
         // Format: "field1.operator.value1,field2.operator.value2"
-        query = query.or(`name.ilike.%${trimmedSearch}%,salt_formula.ilike.%${trimmedSearch}%,barcode.eq.${trimmedSearch}`);
+        query = query.or(`name.ilike.${trimmedSearch}%,barcode.ilike.${trimmedSearch}%`);
       }
 
       // Apply rack filter if provided
@@ -847,6 +847,28 @@ export function useProducts() {
     }
   };
 
+  const searchProducts = useCallback(async (searchTerm: string): Promise<Product[]> => {
+    try {
+      if (!searchTerm?.trim()) return [];
+      const trimmedSearch = searchTerm.trim();
+      
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          rack:racks(id, name, color)
+        `)
+        .or(`name.ilike.${trimmedSearch}%,barcode.ilike.${trimmedSearch}%`)
+        .order('name');
+
+      if (error) throw error;
+      return data || [];
+    } catch (err) {
+      console.error('Error searching products:', err);
+      return [];
+    }
+  }, []);
+
   // Memoize refetch function to prevent unnecessary re-renders in consuming components
   const stableRefetch = useCallback(() => {
     return fetchAll();
@@ -873,6 +895,7 @@ export function useProducts() {
     updateBatch,
     updateBatchQuantity,
     refetch: stableRefetch,
-    fetchProducts, // Expose fetchProducts for server-side search if needed
+    fetchProducts,
+    searchProducts,
   };
 }

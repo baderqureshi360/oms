@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { formatPKR } from '@/lib/currency';
 import { Badge } from '@/components/ui/badge';
 import { Search, Check, ChevronsUpDown } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import {
@@ -54,7 +53,7 @@ import { format, parseISO, isBefore, addDays, startOfToday } from 'date-fns';
 import { toast } from 'sonner';
 
 export default function StockPurchases() {
-  const { products, batches, getProductStock, addBatch, updateBatch } = useProducts();
+  const { products, batches, getProductStock, addBatch, updateBatch, searchProducts } = useProducts();
   const { sales } = useSales();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState<StockBatch | null>(null);
@@ -91,15 +90,8 @@ export default function StockPurchases() {
 
       setIsSearching(true);
       try {
-        const trimmedSearch = debouncedSearch.trim();
-        const { data, error } = await supabase
-          .from('products')
-          .select('*, rack:racks(id, name, color)')
-          .or(`name.ilike.%${trimmedSearch}%,salt_formula.ilike.%${trimmedSearch}%,barcode.eq.${trimmedSearch}`)
-          .order('name');
-        
-        if (error) throw error;
-        setSearchResults(data || []);
+        const results = await searchProducts(debouncedSearch);
+        setSearchResults(results);
       } catch (err) {
         console.error('Search failed:', err);
         toast.error('Failed to search products');
@@ -109,7 +101,7 @@ export default function StockPurchases() {
     };
 
     performSearch();
-  }, [debouncedSearch, products]);
+  }, [debouncedSearch, products, searchProducts]);
 
   const handleEditClick = (batch: StockBatch) => {
     setEditingBatch(batch);
@@ -232,9 +224,9 @@ export default function StockPurchases() {
     return sortedBatches.filter((batch) => {
        const product = products.find(p => p.id === batch.product_id);
        if (isNumeric) {
-         return product?.barcode?.toLowerCase().includes(searchLower) || false;
+         return product?.barcode?.toLowerCase().startsWith(searchLower) || false;
        } else {
-         return product?.name?.toLowerCase().includes(searchLower) || false;
+         return product?.name?.toLowerCase().startsWith(searchLower) || false;
        }
     });
   }, [sortedBatches, debouncedTableSearch, products]);

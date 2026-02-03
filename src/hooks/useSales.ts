@@ -21,6 +21,31 @@ export interface SaleItem {
   batch_deductions: BatchDeduction[] | null;
 }
 
+export interface ReturnItem {
+  id: string;
+  return_id: string;
+  product_id: string;
+  sale_item_id: string;
+  quantity: number;
+  batch_id: string | null;
+  sale_item?: {
+    unit_price: number;
+    total: number;
+    quantity: number;
+    batch_deductions: BatchDeduction[] | null;
+  };
+}
+
+export interface SalesReturn {
+  id: string;
+  sale_id: string;
+  receipt_number: string;
+  return_reason: string;
+  returned_by: string | null;
+  created_at: string;
+  items?: ReturnItem[];
+}
+
 export interface Sale {
   id: string;
   receipt_number: string;
@@ -43,6 +68,7 @@ export interface CartItem {
 
 export function useSales() {
   const [sales, setSales] = useState<Sale[]>([]);
+  const [returns, setReturns] = useState<SalesReturn[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
@@ -54,7 +80,7 @@ export function useSales() {
     try {
       setError(null);
       // Optimize query - select only required fields
-      const { data, error: queryError } = await supabase
+      const { data: salesData, error: salesError } = await supabase
         .from('sales')
         .select(`
           id, receipt_number, total, payment_method, cashier_id, created_at, discount,
@@ -63,18 +89,37 @@ export function useSales() {
         .order('created_at', { ascending: false })
         .limit(MAX_RECORDS_PER_QUERY);
       
-      if (queryError) {
-        throw queryError;
+      if (salesError) {
+        throw salesError;
+      }
+
+      const { data: returnsData, error: returnsError } = await supabase
+        .from('sales_returns')
+        .select(`
+          id, sale_id, receipt_number, return_reason, returned_by, created_at,
+          items:return_items(
+            id, return_id, product_id, sale_item_id, quantity, batch_id,
+            sale_item:sale_items(unit_price, total, quantity, batch_deductions)
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(MAX_RECORDS_PER_QUERY);
+
+      if (returnsError) {
+        console.error('Error fetching returns:', returnsError);
+        // Don't block sales loading if returns fail, but maybe warn?
       }
       
       // Defensive null handling
-      setSales(Array.isArray(data) ? data : []);
+      setSales(Array.isArray(salesData) ? salesData : []);
+      setReturns(Array.isArray(returnsData) ? returnsData : []);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load sales';
       console.error('Error fetching sales:', err);
       setError(errorMessage);
       toast.error('Failed to load sales');
       setSales([]); // Set empty array on error
+      setReturns([]);
     } finally {
       setLoading(false);
     }
@@ -163,8 +208,25 @@ export function useSales() {
         });
       }
 
+      // Generate Receipt Number (HH-XXXXX)
+      const { data: lastSale } = await supabase
+        .from('sales')
+        .select('receipt_number')
+        .like('receipt_number', 'HH-%')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let nextNum = 1;
+      if (lastSale?.receipt_number) {
+        const parts = lastSale.receipt_number.split('-');
+        if (parts.length === 2 && !isNaN(parseInt(parts[1]))) {
+          nextNum = parseInt(parts[1]) + 1;
+        }
+      }
+      const receiptNumber = `HH-${nextNum.toString().padStart(5, '0')}`;
+
       // Create sale record
-      const receiptNumber = generateReceiptNumber();
       const total = items.reduce((sum, item) => sum + item.total, 0);
 
       const { data: saleData, error: saleError } = await supabase
@@ -263,7 +325,10 @@ export function useSales() {
         .from('sales')
         .select(`
           *,
-          items:sale_items(*)
+          items:sale_items(*),
+          returns:sales_returns(
+            items:return_items(*)
+          )
         `)
         .eq('receipt_number', receiptNumber)
         .maybeSingle();
@@ -280,6 +345,49 @@ export function useSales() {
     }
   };
 
+  const processReturn = async (
+    saleId: string,
+    returnItems: { saleItemId: string; productId: string; quantity: number; batchId: string | null }[]
+  ) => {
+    try {
+      // 1. Create Return Record
+      const returnReceipt = `RET-${Date.now()}`;
+      const { data: returnData, error: returnError } = await supabase
+        .from('sales_returns')
+        .insert({
+          sale_id: saleId,
+          receipt_number: returnReceipt,
+          return_reason: 'Customer Return',
+          returned_by: user?.id,
+        })
+        .select()
+        .single();
+
+      if (returnError) throw returnError;
+
+      // 2. Create Return Items
+      const itemsToInsert = returnItems.map(item => ({
+        return_id: returnData.id,
+        product_id: item.productId,
+        sale_item_id: item.saleItemId,
+        quantity: item.quantity,
+        batch_id: item.batchId
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('return_items')
+        .insert(itemsToInsert);
+
+      if (itemsError) throw itemsError;
+
+      await fetchSales();
+      return { success: true };
+    } catch (err: unknown) {
+      console.error('Error processing return:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Failed to process return' };
+    }
+  };
+
   // Memoize refetch function to prevent unnecessary re-renders
   const stableRefetch = useCallback(() => {
     return fetchSales();
@@ -287,10 +395,12 @@ export function useSales() {
 
   return {
     sales,
+    returns,
     loading,
     error,
     processSale,
     getSaleByReceipt,
+    processReturn,
     refetch: stableRefetch,
   };
 }
