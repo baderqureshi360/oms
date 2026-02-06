@@ -232,17 +232,33 @@ export default function StockPurchases() {
   }, [sortedBatches, debouncedTableSearch, products]);
 
   const getExpiryBadge = (expiryDate: string) => {
-    const expiry = parseISO(expiryDate);
-    const isExpired = isBefore(expiry, today);
-    const isExpiringSoon = isBefore(expiry, addDays(today, 30));
+    if (!expiryDate) {
+      return <span className="text-muted-foreground">No Expiry</span>;
+    }
 
-    if (isExpired) {
-      return <Badge variant="destructive">Expired</Badge>;
+    try {
+      const expiry = parseISO(expiryDate);
+      
+      // Check for invalid date
+      if (isNaN(expiry.getTime())) {
+        console.error('Invalid expiry date:', expiryDate);
+        return <Badge variant="outline" className="text-muted-foreground">Invalid Date</Badge>;
+      }
+
+      const isExpired = isBefore(expiry, today);
+      const isExpiringSoon = isBefore(expiry, addDays(today, 30));
+
+      if (isExpired) {
+        return <Badge variant="destructive">Expired</Badge>;
+      }
+      if (isExpiringSoon) {
+        return <Badge className="bg-warning text-warning-foreground">{format(expiry, 'MMM d, yyyy')}</Badge>;
+      }
+      return <span className="text-muted-foreground">{format(expiry, 'MMM d, yyyy')}</span>;
+    } catch (error) {
+      console.error('Error parsing expiry date:', expiryDate, error);
+      return <Badge variant="outline" className="text-muted-foreground">Invalid Date</Badge>;
     }
-    if (isExpiringSoon) {
-      return <Badge className="bg-warning text-warning-foreground">{format(expiry, 'MMM d, yyyy')}</Badge>;
-    }
-    return <span className="text-muted-foreground">{format(expiry, 'MMM d, yyyy')}</span>;
   };
 
   return (

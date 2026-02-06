@@ -219,8 +219,9 @@ export function useProducts() {
 
     // Cleanup subscriptions on unmount
     return () => {
-      supabase.removeChannel(productsChannel);
-      supabase.removeChannel(batchesChannel);
+      // Use unsubscribe() directly on the channel instance
+      productsChannel.unsubscribe().catch((err) => console.warn('Error unsubscribing from products channel:', err));
+      batchesChannel.unsubscribe().catch((err) => console.warn('Error unsubscribing from batches channel:', err));
     };
   }, [fetchProducts, fetchBatches]);
 
