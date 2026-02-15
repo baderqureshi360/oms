@@ -116,10 +116,22 @@ export function useProducts() {
   const fetchBatches = useCallback(async () => {
     try {
       setError(null);
-      // Optimize query - select only required fields for better performance
       const { data, error: queryError } = await supabase
         .from('stock_batches')
-        .select('id, product_id, batch_number, quantity, cost_price, selling_price, expiry_date, purchase_date, supplier, created_by, created_at')
+        .select(`
+          id,
+          product_id,
+          batch_number,
+          quantity,
+          cost_price,
+          selling_price,
+          expiry_date,
+          purchase_date,
+          supplier,
+          created_by,
+          created_at,
+          product:products(id, name, barcode)
+        `)
         .order('expiry_date')
         .limit(MAX_RECORDS_PER_QUERY);
 
@@ -193,26 +205,8 @@ export function useProducts() {
           schema: 'public',
           table: 'stock_batches',
         },
-        (payload) => {
-          // Use incremental updates for better performance
-          if (payload.eventType === 'INSERT' && payload.new) {
-            setBatches((prev) => {
-              const exists = prev.some(b => b.id === payload.new.id);
-              if (exists) return prev;
-              const updated = [...prev, payload.new as StockBatch];
-              return updated.sort((a, b) => a.expiry_date.localeCompare(b.expiry_date));
-            });
-          } else if (payload.eventType === 'UPDATE' && payload.new) {
-            setBatches((prev) =>
-              prev.map((b) => (b.id === payload.new.id ? payload.new as StockBatch : b))
-                .sort((a, b) => a.expiry_date.localeCompare(b.expiry_date))
-            );
-          } else if (payload.eventType === 'DELETE' && payload.old) {
-            setBatches((prev) => prev.filter((b) => b.id !== payload.old.id));
-          } else {
-            // Fallback to full refetch for unknown events
-            fetchBatches();
-          }
+        () => {
+          fetchBatches();
         }
       )
       .subscribe();
@@ -315,7 +309,7 @@ export function useProducts() {
       };
 
       // Prepare payload - include salt_formula if provided (optional field)
-      const payload: any = {
+      const payload = {
         name: product.name.trim(),
         barcode: finalBarcode,
         strength: toOptionalString(product.strength),
@@ -505,7 +499,7 @@ export function useProducts() {
       };
 
       // Include salt_formula if provided (optional field)
-      const finalUpdateData: any = { ...updateData };
+      const finalUpdateData = { ...updateData };
       if (salt_formula !== undefined) {
         const saltFormula = toOptionalString(salt_formula);
         // Include even if null to allow clearing the field

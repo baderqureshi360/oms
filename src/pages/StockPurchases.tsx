@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatPKR } from '@/lib/currency';
 import { Badge } from '@/components/ui/badge';
-import { Search, Check, ChevronsUpDown } from 'lucide-react';
+import { Check, ChevronsUpDown } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import {
@@ -47,18 +47,26 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useProducts, type Product, type StockBatch } from '@/hooks/useProducts';
-import { useSales } from '@/hooks/useSales';
 import { Plus, PackagePlus, Package, Layers, Pencil } from 'lucide-react';
 import { format, parseISO, isBefore, addDays, startOfToday } from 'date-fns';
 import { toast } from 'sonner';
 
 export default function StockPurchases() {
   const { products, batches, getProductStock, addBatch, updateBatch, searchProducts } = useProducts();
-  const { sales } = useSales();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState<StockBatch | null>(null);
   const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
-  const [pendingUpdate, setPendingUpdate] = useState<any>(null);
+  type PendingBatchUpdate = {
+    product_id: string;
+    quantity: number;
+    cost_price: number;
+  };
+
+  type BatchWithProduct = StockBatch & {
+    product?: Product | null;
+  };
+
+  const [pendingUpdate, setPendingUpdate] = useState<PendingBatchUpdate | null>(null);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 500);
@@ -103,10 +111,34 @@ export default function StockPurchases() {
     performSearch();
   }, [debouncedSearch, products, searchProducts]);
 
+  const isUuid = useCallback((value: string) => {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  }, []);
+
+  const getBatchProduct = useCallback((batch: BatchWithProduct): Product | undefined => {
+    const joinedProduct = batch.product || undefined;
+
+    if (joinedProduct && joinedProduct.id && joinedProduct.name) {
+      return joinedProduct;
+    }
+
+    const byId = products.find((p) => p.id === batch.product_id);
+    if (byId) return byId;
+
+    const rawId = batch.product_id;
+    if (rawId && !isUuid(rawId)) {
+      const normalized = rawId.toLowerCase();
+      return products.find((p) => p.name?.toLowerCase() === normalized);
+    }
+
+    return undefined;
+  }, [products, isUuid]);
+
   const handleEditClick = (batch: StockBatch) => {
+    const product = getBatchProduct(batch);
     setEditingBatch(batch);
     setFormData({
-      productId: batch.product_id,
+      productId: product?.id || batch.product_id,
       batchNumber: batch.batch_number,
       quantity: batch.quantity.toString(),
       costPrice: batch.cost_price.toString(),
@@ -114,7 +146,7 @@ export default function StockPurchases() {
       expiryDate: batch.expiry_date,
       supplier: batch.supplier || '',
     });
-    setSelectedProductObj(products.find(p => p.id === batch.product_id) || null);
+    setSelectedProductObj(product || null);
     setIsFormOpen(true);
   };
 
@@ -126,6 +158,11 @@ export default function StockPurchases() {
     
     if (!selectedProduct) {
       toast.error('Please select a product');
+      return;
+    }
+
+    if (!formData.productId) {
+      toast.error('Invalid product selection');
       return;
     }
 
@@ -164,9 +201,11 @@ export default function StockPurchases() {
       return;
     }
 
+    const resolvedProductId = selectedProduct.id;
+
     if (editingBatch) {
       setPendingUpdate({
-        product_id: formData.productId,
+        product_id: resolvedProductId,
         quantity,
         cost_price: costPrice,
       });
@@ -175,7 +214,7 @@ export default function StockPurchases() {
     }
 
     const result = await addBatch({
-      product_id: formData.productId,
+      product_id: resolvedProductId,
       batch_number: formData.batchNumber.trim(),
       quantity,
       cost_price: costPrice,
@@ -222,14 +261,20 @@ export default function StockPurchases() {
     const isNumeric = /^\d+$/.test(searchLower);
     
     return sortedBatches.filter((batch) => {
-       const product = products.find(p => p.id === batch.product_id);
+       const product = getBatchProduct(batch);
+       if (!product) return false;
+
        if (isNumeric) {
-         return product?.barcode?.toLowerCase().startsWith(searchLower) || false;
+         const barcode = product.barcode?.toLowerCase() || '';
+         if (!barcode) return false;
+         return barcode.startsWith(searchLower);
        } else {
-         return product?.name?.toLowerCase().startsWith(searchLower) || false;
+         const name = product.name?.toLowerCase() || '';
+         if (!name) return false;
+         return name.startsWith(searchLower);
        }
     });
-  }, [sortedBatches, debouncedTableSearch, products]);
+  }, [sortedBatches, debouncedTableSearch, getBatchProduct]);
 
   const getExpiryBadge = (expiryDate: string) => {
     if (!expiryDate) {
@@ -352,7 +397,7 @@ export default function StockPurchases() {
             </TableHeader>
             <TableBody>
               {filteredBatches.map((batch) => {
-                const product = products.find(p => p.id === batch.product_id);
+                const product = getBatchProduct(batch);
                 return (
                   <TableRow key={batch.id} className="hover:bg-muted/30">
                     <TableCell>
@@ -360,7 +405,7 @@ export default function StockPurchases() {
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
                           <Package className="w-5 h-5 text-primary" />
                         </div>
-                        <span className="font-medium">{product?.name || 'Unknown Product'}</span>
+                        <span className="font-medium">{product ? product.name : batch.product_id}</span>
                       </div>
                     </TableCell>
                     <TableCell>

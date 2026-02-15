@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { useSales } from '@/hooks/useSales';
+import { useSales, type BatchDeduction, type Sale, type SaleItem, type SalesReturn, type ReturnItem } from '@/hooks/useSales';
 import { useProducts } from '@/hooks/useProducts';
 import { formatPKR } from '@/lib/currency';
 import {
@@ -16,21 +16,32 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay, differenceInHours } from 'date-fns';
-import { Banknote, Receipt, TrendingUp, Calendar, Package, Download, ArrowLeft, Search, Undo2 } from 'lucide-react';
+import { Banknote, Receipt, TrendingUp, Calendar, Package, Download, Search, Undo2 } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { toast } from 'sonner';
+
+type SaleWithReturns = Sale & {
+  returns?: SalesReturn[];
+};
+
+type ReturnWithItems = SalesReturn & {
+  items?: ReturnItem[];
+};
+
+type SaleWithItems = Sale & {
+  items?: SaleItem[];
+};
 
 export default function SalesReport() {
   const { sales, returns, loading, processReturn, getSaleByReceipt } = useSales();
   const { batches } = useProducts();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  
-  // Return Feature State
+
   const [viewMode, setViewMode] = useState<'report' | 'return'>('report');
   const [returnReceiptId, setReturnReceiptId] = useState('');
-  const [foundSale, setFoundSale] = useState<any>(null);
-  const [returnSelection, setReturnSelection] = useState<{[key: string]: number}>({});
+  const [foundSale, setFoundSale] = useState<SaleWithReturns | null>(null);
+  const [returnSelection, setReturnSelection] = useState<{ [key: string]: number }>({});
   const [isProcessingReturn, setIsProcessingReturn] = useState(false);
   const [isReturnExpired, setIsReturnExpired] = useState(false);
 
@@ -59,10 +70,10 @@ export default function SalesReport() {
     }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }, [sales, dateFrom, dateTo]);
 
-  const filteredReturns = useMemo(() => {
+  const filteredReturns = useMemo<ReturnWithItems[]>(() => {
     if (!returns || !Array.isArray(returns)) return [];
 
-    return returns.filter((ret) => {
+    return returns.filter((ret): ret is ReturnWithItems => {
       if (!ret?.created_at) return false;
       const retDate = new Date(ret.created_at);
 
@@ -84,40 +95,49 @@ export default function SalesReport() {
 
   // --- Calculation Helpers ---
 
-  const getCostPrice = (productId: string, batchDeductions: any) => {
-    if (!batchDeductions || !Array.isArray(batchDeductions) || batchDeductions.length === 0) {
+  const getCostPrice = useCallback((productId: string, batchDeductions: BatchDeduction[] | null | undefined) => {
+    if (!batchDeductions || batchDeductions.length === 0) {
       return 0;
     }
-    const firstBatchId = batchDeductions[0]?.batch_id;
-    if (!firstBatchId) return 0;
-    const batch = batches.find(b => b.id === firstBatchId);
-    return batch?.cost_price || 0;
-  };
+    const totals = batchDeductions.reduce(
+      (acc, deduction) => {
+        const batch = batches.find((b) => b.id === deduction.batch_id);
+        const qty = deduction.quantity || 0;
+        const unitCost = batch?.cost_price || 0;
+        return {
+          totalQty: acc.totalQty + qty,
+          totalCost: acc.totalCost + unitCost * qty,
+        };
+      },
+      { totalQty: 0, totalCost: 0 }
+    );
+    return totals.totalQty > 0 ? totals.totalCost / totals.totalQty : 0;
+  }, [batches]);
 
-  const calculateItemProfit = (item: any) => {
+  const calculateItemProfit = useCallback((item: SaleItem) => {
     if (!item) return 0;
     const costPrice = getCostPrice(item.product_id, item.batch_deductions);
     return (item.unit_price - costPrice) * item.quantity;
-  };
+  }, [getCostPrice]);
 
-  const calculateSaleProfit = (sale: any) => {
+  const calculateSaleProfit = useCallback((sale: SaleWithItems) => {
     if (!sale?.items || !Array.isArray(sale.items)) return 0;
-    return sale.items.reduce((sum: number, item: any) => sum + calculateItemProfit(item), 0);
-  };
+    return sale.items.reduce((sum: number, item: SaleItem) => sum + calculateItemProfit(item), 0);
+  }, [calculateItemProfit]);
 
-  const calculateReturnValue = (ret: any) => {
-    return ret.items?.reduce((sum: number, item: any) => {
+  const calculateReturnValue = useCallback((ret: ReturnWithItems) => {
+    return ret.items?.reduce((sum: number, item: ReturnItem) => {
       return sum + (item.quantity * (item.sale_item?.unit_price || 0));
     }, 0) || 0;
-  };
+  }, []);
 
-  const calculateReturnProfitDeduction = (ret: any) => {
-    return ret.items?.reduce((sum: number, item: any) => {
+  const calculateReturnProfitDeduction = useCallback((ret: ReturnWithItems) => {
+    return ret.items?.reduce((sum: number, item: ReturnItem) => {
       const unitPrice = item.sale_item?.unit_price || 0;
       const costPrice = getCostPrice(item.product_id, item.sale_item?.batch_deductions);
       return sum + (item.quantity * (unitPrice - costPrice));
     }, 0) || 0;
-  };
+  }, [getCostPrice]);
 
   // --- Stats ---
 
@@ -133,18 +153,22 @@ export default function SalesReport() {
     const avgTransaction = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
     
     // Total items sold (net)
-    const grossItems = filteredSales.reduce((sum, sale) =>
-      sum + (sale?.items?.reduce((itemSum: number, item: any) => itemSum + (item?.quantity || 0), 0) || 0), 0
+    const grossItems = filteredSales.reduce(
+      (sum, sale) =>
+        sum + (sale?.items?.reduce((itemSum: number, item: SaleItem) => itemSum + (item?.quantity || 0), 0) || 0),
+      0,
     );
-    const returnedItems = filteredReturns.reduce((sum, ret) => 
-      sum + (ret.items?.reduce((itemSum: number, item: any) => itemSum + (item?.quantity || 0), 0) || 0), 0
+    const returnedItems = filteredReturns.reduce(
+      (sum, ret) =>
+        sum + (ret.items?.reduce((itemSum: number, item: ReturnItem) => itemSum + (item?.quantity || 0), 0) || 0),
+      0,
     );
     const totalItems = grossItems - returnedItems;
     
     const totalProfit = grossProfit - returnProfit;
 
     return { totalRevenue, totalTransactions, avgTransaction, totalItems, totalProfit };
-  }, [filteredSales, filteredReturns, batches]);
+  }, [filteredSales, filteredReturns, calculateReturnProfitDeduction, calculateReturnValue, calculateSaleProfit]);
 
   // --- Return Handlers ---
 
@@ -176,15 +200,15 @@ export default function SalesReport() {
   const getReturnedQuantity = (saleItemId: string) => {
     // First try to use the returns attached to the foundSale, as they are specific to this sale
     if (foundSale?.returns && Array.isArray(foundSale.returns)) {
-       let qty = 0;
-       foundSale.returns.forEach((ret: any) => {
-         ret.items?.forEach((item: any) => {
-           if (item.sale_item_id === saleItemId) {
-             qty += item.quantity;
-           }
-         });
-       });
-       return qty;
+      let qty = 0;
+      foundSale.returns.forEach((ret) => {
+        ret.items?.forEach((item) => {
+          if (item.sale_item_id === saleItemId) {
+            qty += item.quantity;
+          }
+        });
+      });
+      return qty;
     }
 
     // Fallback to global returns list
@@ -203,23 +227,25 @@ export default function SalesReport() {
   const handleReturnSubmit = async () => {
     if (!foundSale) return;
 
-    const itemsToReturn = Object.entries(returnSelection).map(([saleItemId, qty]) => {
-      const originalItem = foundSale.items.find((i: any) => i.id === saleItemId);
-      if (!originalItem || qty <= 0) return null;
+    const itemsToReturn = Object.entries(returnSelection)
+      .map(([saleItemId, qty]) => {
+        const originalItem = foundSale.items?.find((i) => i.id === saleItemId);
+        if (!originalItem || qty <= 0) return null;
       
       // Determine batch to return to (using first batch deduction for simplicity as we don't track which specific batch unit was returned if multiple batches used)
       // Ideally we should match logic, but typically we return to the batch that was deducted.
       // Since 'batch_deductions' is an array, we might have multiple batches.
       // For simplicity in this strict scope, we take the first batch ID or null.
-      const batchId = originalItem.batch_deductions?.[0]?.batch_id || null;
+        const batchId = originalItem.batch_deductions?.[0]?.batch_id || null;
 
-      return {
-        saleItemId,
-        productId: originalItem.product_id,
-        quantity: qty,
-        batchId
-      };
-    }).filter((i): i is NonNullable<typeof i> => i !== null);
+        return {
+          saleItemId,
+          productId: originalItem.product_id,
+          quantity: qty,
+          batchId,
+        };
+      })
+      .filter((i): i is NonNullable<typeof i> => i !== null);
 
     if (itemsToReturn.length === 0) {
       toast.error('No items selected for return');
@@ -254,12 +280,10 @@ export default function SalesReport() {
     filteredSales.forEach((sale) => {
       if (!sale?.items || !Array.isArray(sale.items)) return;
 
-      sale.items.forEach((item: any, idx: number) => {
+      sale.items.forEach((item, idx: number) => {
         const saleDate = format(new Date(sale.created_at), 'yyyy-MM-dd HH:mm:ss');
-        const discount = (sale as any).discount || 0;
-        const itemTotal = idx === 0 && sale.items!.length === 1
-          ? sale.total
-          : item.total - (idx === 0 ? discount / sale.items!.length : 0);
+        const discount = sale.discount || 0;
+        const itemTotal = item.total - (idx === 0 ? discount : 0);
 
         rows.push([
           sale.id,
@@ -278,8 +302,8 @@ export default function SalesReport() {
 
     // Append Returns
     filteredReturns.forEach((ret) => {
-       if (!ret?.items) return;
-       ret.items.forEach((item: any) => {
+      if (!ret?.items) return;
+      ret.items.forEach((item) => {
          const retDate = format(new Date(ret.created_at), 'yyyy-MM-dd HH:mm:ss');
          const unitPrice = item.sale_item?.unit_price || 0;
          const total = unitPrice * item.quantity;
@@ -474,7 +498,7 @@ export default function SalesReport() {
                         <TableCell className="font-mono text-sm">#{sale.receipt_number || sale.id.slice(0, 8)}</TableCell>
                         <TableCell>
                           <div className="space-y-1">
-                            {sale.items?.map((item: any, idx: number) => (
+                            {sale.items?.map((item, idx: number) => (
                               <div key={idx} className="text-sm">
                                 <span className="font-medium">{item.product_name || 'Unknown'}</span>
                                 <span className="text-muted-foreground"> × {item.quantity || 0}</span>
@@ -591,7 +615,7 @@ export default function SalesReport() {
                               </TableRow>
                            </TableHeader>
                            <TableBody>
-                              {foundSale.items.map((item: any) => {
+                              {foundSale.items?.map((item) => {
                                  const returnedAlready = getReturnedQuantity(item.id);
                                  const maxReturn = item.quantity - returnedAlready;
                                  
@@ -646,12 +670,13 @@ export default function SalesReport() {
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {foundSale.returns.map((ret: any) => (
-                                ret.items?.map((item: any) => {
-                                  // Find original sale item to get details
-                                  const originalItem = foundSale.items.find((i: any) => i.id === item.sale_item_id);
+                              {foundSale.returns?.map((ret) => (
+                                ret.items?.map((item) => {
+                                  const originalItem = foundSale.items?.find((i) => i.id === item.sale_item_id);
                                   const unitPrice = originalItem?.unit_price || 0;
-                                  const costPrice = getCostPrice(originalItem?.product_id, originalItem?.batch_deductions);
+                                  const costPrice = originalItem
+                                    ? getCostPrice(originalItem.product_id, originalItem.batch_deductions)
+                                    : 0;
                                   const amountDeducted = item.quantity * unitPrice;
                                   const profitDeducted = item.quantity * (unitPrice - costPrice);
                                   

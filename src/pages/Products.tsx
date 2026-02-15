@@ -1,7 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ProductForm } from '@/components/products/ProductForm';
-import { BarcodeScanner } from '@/components/pos/BarcodeScanner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -479,7 +478,12 @@ export default function Products() {
               <DialogTitle>{editingProduct ? 'Edit Product' : 'Add New Product'}</DialogTitle>
             </DialogHeader>
             <ProductForm
-              product={editingProduct || (scannedBarcode ? { barcode: scannedBarcode, name: '', rack_id: null, min_stock: 10 } as any : undefined)}
+              product={
+                editingProduct ||
+                (scannedBarcode
+                  ? { barcode: scannedBarcode, name: '', rack_id: null, min_stock: 10 }
+                  : undefined)
+              }
               onSubmit={async (data) => {
                 await handleSubmit(data);
                 setScannedBarcode('');

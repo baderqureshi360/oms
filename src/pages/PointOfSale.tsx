@@ -238,7 +238,7 @@ export default function PointOfSale() {
       }));
     };
 
-    const result = await processSale(cartItems, paymentMethod, getAvailableBatchesForSale);
+    const result = await processSale(cartItems, paymentMethod, getAvailableBatchesForSale, discountAmount);
     
     if (!result.success) {
       toast.error('Sale failed', {

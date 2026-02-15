@@ -9,7 +9,7 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ProductFormProps {
-  product?: Product;
+  product?: Partial<Product>;
   onSubmit: (data: Omit<Product, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'rack'>) => void;
   onCancel: () => void;
 }

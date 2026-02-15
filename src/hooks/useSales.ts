@@ -33,7 +33,8 @@ export interface ReturnItem {
     total: number;
     quantity: number;
     batch_deductions: BatchDeduction[] | null;
-  };
+    product_name?: string;
+  } | null;
 }
 
 export interface SalesReturn {
@@ -53,6 +54,7 @@ export interface Sale {
   payment_method: string;
   cashier_id: string | null;
   created_at: string;
+  discount?: number | null;
   items?: SaleItem[];
 }
 
@@ -99,7 +101,7 @@ export function useSales() {
           id, sale_id, receipt_number, return_reason, returned_by, created_at,
           items:return_items(
             id, return_id, product_id, sale_item_id, quantity, batch_id,
-            sale_item:sale_items(unit_price, total, quantity, batch_deductions)
+            sale_item:sale_items(unit_price, total, quantity, batch_deductions, product_name)
           )
         `)
         .order('created_at', { ascending: false })
@@ -146,7 +148,8 @@ export function useSales() {
   const processSale = async (
     items: CartItem[],
     paymentMethod: string,
-    getAvailableBatches: (productId: string) => AvailableBatch[]
+    getAvailableBatches: (productId: string) => AvailableBatch[],
+    discountAmount?: number
   ): Promise<{ success: boolean; error?: string; sale?: Sale }> => {
     try {
       // Validate stock and prepare batch deductions
@@ -226,14 +229,16 @@ export function useSales() {
       }
       const receiptNumber = `HH-${nextNum.toString().padStart(5, '0')}`;
 
-      // Create sale record
-      const total = items.reduce((sum, item) => sum + item.total, 0);
+      const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+      const normalizedDiscount = typeof discountAmount === 'number' && !isNaN(discountAmount) && discountAmount > 0 ? discountAmount : 0;
+      const total = Math.max(0, subtotal - normalizedDiscount);
 
       const { data: saleData, error: saleError } = await supabase
         .from('sales')
         .insert({
           receipt_number: receiptNumber,
           total,
+          discount: normalizedDiscount || null,
           payment_method: paymentMethod,
           cashier_id: user?.id,
         })
@@ -261,12 +266,16 @@ export function useSales() {
 
       // Optimize batch quantity updates - batch multiple updates together
       // Collect all batch updates first
-      const batchUpdates: Array<{ id: string; quantity: number }> = [];
       const batchIdsToFetch = new Set<string>();
+      const batchDeductionMap = new Map<string, number>();
       
       for (const item of itemsWithDeductions) {
         for (const deduction of item.batch_deductions) {
           batchIdsToFetch.add(deduction.batch_id);
+          batchDeductionMap.set(
+            deduction.batch_id,
+            (batchDeductionMap.get(deduction.batch_id) || 0) + deduction.quantity
+          );
         }
       }
 
@@ -278,16 +287,11 @@ export function useSales() {
           .in('id', Array.from(batchIdsToFetch));
 
         if (currentBatches) {
-          const batchMap = new Map(currentBatches.map(b => [b.id, b.quantity]));
-          
-          // Calculate new quantities
-          for (const item of itemsWithDeductions) {
-            for (const deduction of item.batch_deductions) {
-              const currentQty = batchMap.get(deduction.batch_id) || 0;
-              const newQty = currentQty - deduction.quantity;
-              batchUpdates.push({ id: deduction.batch_id, quantity: newQty });
-            }
-          }
+          const batchUpdates = currentBatches.map((batch) => {
+            const currentQty = batch.quantity || 0;
+            const deductionQty = batchDeductionMap.get(batch.id) || 0;
+            return { id: batch.id, quantity: Math.max(0, currentQty - deductionQty) };
+          });
 
           // Execute all updates in parallel using Promise.all
           await Promise.all(
