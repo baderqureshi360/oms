@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
@@ -25,7 +26,7 @@ export default defineConfig(({ mode }) => ({
             return;
           }
 
-          if (id.includes("react")) {
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)([\\/]|$)/.test(id)) {
             return "react";
           }
 
