@@ -75,6 +75,7 @@ export default function StockPurchases() {
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedProductObj, setSelectedProductObj] = useState<Product | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     productId: '',
@@ -155,6 +156,7 @@ export default function StockPurchases() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     
     if (!selectedProduct) {
       toast.error('Please select a product');
@@ -212,42 +214,51 @@ export default function StockPurchases() {
       setShowUpdateConfirm(true);
       return;
     }
-
-    const result = await addBatch({
-      product_id: resolvedProductId,
-      batch_number: formData.batchNumber.trim(),
-      quantity,
-      cost_price: costPrice,
-      selling_price: sellingPrice,
-      expiry_date: formData.expiryDate,
-      purchase_date: new Date().toISOString().split('T')[0],
-      supplier: formData.supplier || null,
-    });
-
-    if (result) {
-      toast.success('Stock purchase recorded', {
-        description: `Added ${quantity} units of ${selectedProduct.name} (Batch: ${formData.batchNumber})`,
+    setIsSubmitting(true);
+    try {
+      const result = await addBatch({
+        product_id: resolvedProductId,
+        batch_number: formData.batchNumber.trim(),
+        quantity,
+        cost_price: costPrice,
+        selling_price: sellingPrice,
+        expiry_date: formData.expiryDate,
+        purchase_date: new Date().toISOString().split('T')[0],
+        supplier: formData.supplier || null,
       });
 
-      setFormData({ productId: '', batchNumber: '', quantity: '', costPrice: '', sellingPrice: '', expiryDate: '', supplier: '' });
-      setSelectedProductObj(null);
-      setIsFormOpen(false);
+      if (result) {
+        toast.success('Stock purchase recorded', {
+          description: `Added ${quantity} units of ${selectedProduct.name} (Batch: ${formData.batchNumber})`,
+        });
+
+        setFormData({ productId: '', batchNumber: '', quantity: '', costPrice: '', sellingPrice: '', expiryDate: '', supplier: '' });
+        setSelectedProductObj(null);
+        setIsFormOpen(false);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleConfirmUpdate = async () => {
-    if (!editingBatch || !pendingUpdate) return;
+    if (!editingBatch || !pendingUpdate || isSubmitting) return;
+    setIsSubmitting(true);
     
-    const result = await updateBatch(editingBatch.id, pendingUpdate);
+    try {
+      const result = await updateBatch(editingBatch.id, pendingUpdate);
 
-    if (result) {
-      setFormData({ productId: '', batchNumber: '', quantity: '', costPrice: '', sellingPrice: '', expiryDate: '', supplier: '' });
-      setSelectedProductObj(null);
-      setEditingBatch(null);
-      setIsFormOpen(false);
+      if (result) {
+        setFormData({ productId: '', batchNumber: '', quantity: '', costPrice: '', sellingPrice: '', expiryDate: '', supplier: '' });
+        setSelectedProductObj(null);
+        setEditingBatch(null);
+        setIsFormOpen(false);
+      }
+    } finally {
+      setShowUpdateConfirm(false);
+      setPendingUpdate(null);
+      setIsSubmitting(false);
     }
-    setShowUpdateConfirm(false);
-    setPendingUpdate(null);
   };
 
   // Sort batches by purchase date (most recent first)
@@ -330,6 +341,7 @@ export default function StockPurchases() {
            <UnifiedSearchBar
               value={tableSearch}
               onChange={setTableSearch}
+              onEnter={(value) => setTableSearch(value)}
               placeholder="Search batches by product name or barcode..."
               autoFocus={false}
             />
@@ -630,7 +642,7 @@ export default function StockPurchases() {
                 <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)} className="w-full sm:w-auto">
                   Cancel
                 </Button>
-                <Button type="submit" className="w-full sm:w-auto">
+                <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
                   {editingBatch ? 'Update Purchase' : 'Record Purchase'}
                 </Button>
               </div>
@@ -639,7 +651,14 @@ export default function StockPurchases() {
         </Dialog>
 
         <AlertDialog open={showUpdateConfirm} onOpenChange={setShowUpdateConfirm}>
-          <AlertDialogContent>
+          <AlertDialogContent
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleConfirmUpdate();
+              }
+            }}
+          >
             <AlertDialogHeader>
               <AlertDialogTitle>Update Stock Purchase?</AlertDialogTitle>
               <AlertDialogDescription>
@@ -648,7 +667,7 @@ export default function StockPurchases() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setShowUpdateConfirm(false)}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleConfirmUpdate}>Update</AlertDialogAction>
+              <AlertDialogAction onClick={handleConfirmUpdate} disabled={isSubmitting}>Update</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

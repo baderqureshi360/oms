@@ -65,6 +65,7 @@ export default function Auth() {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     if (!validateForm(false)) return;
     
     setIsLoading(true);
@@ -85,6 +86,7 @@ export default function Auth() {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     if (!validateForm(true)) return;
     
     setIsLoading(true);

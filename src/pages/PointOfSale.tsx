@@ -567,7 +567,17 @@ export default function PointOfSale() {
 
       {/* Order Confirmation Dialog */}
       <AlertDialog open={showConfirmation} onOpenChange={setShowConfirmation}>
-        <AlertDialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <AlertDialogContent
+          className="max-w-2xl max-h-[90vh] overflow-y-auto"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (pendingPaymentMethod) {
+                handleFinalizeOrder(pendingPaymentMethod);
+              }
+            }
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Order</AlertDialogTitle>
             <AlertDialogDescription>

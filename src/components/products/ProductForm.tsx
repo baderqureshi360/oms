@@ -98,6 +98,7 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
   const { generateBarcode } = useProducts();
   const { racks } = useRacks();
   const [isGeneratingBarcode, setIsGeneratingBarcode] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Initialize rack_id - prefer rack_id, fallback to rack.id if rack object exists
   const initialRackId = product?.rack_id || (product?.rack?.id && product.rack.id.trim() !== '' ? product.rack.id : '');
@@ -159,6 +160,7 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     
     // Validate name (required)
     if (!formData.name || formData.name.trim() === '') {
@@ -217,19 +219,23 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
         }
       }
     }
-    
-    onSubmit({
-      name: formData.name.trim(),
-      strength: formData.strength?.trim() || null,
-      dosage_form: formData.dosage_form || null,
-      barcode: finalBarcode,
-      category: formData.category || null,
-      // Prices are managed at batch level
-      min_stock: minStock,
-      manufacturer: formData.manufacturer?.trim() || null,
-      salt_formula: formData.salt_formula?.trim() || null,
-      rack_id: formData.rack_id, // Required - always a valid rack.id
-    });
+
+    setIsSubmitting(true);
+    try {
+      await onSubmit({
+        name: formData.name.trim(),
+        strength: formData.strength?.trim() || null,
+        dosage_form: formData.dosage_form || null,
+        barcode: finalBarcode,
+        category: formData.category || null,
+        min_stock: minStock,
+        manufacturer: formData.manufacturer?.trim() || null,
+        salt_formula: formData.salt_formula?.trim() || null,
+        rack_id: formData.rack_id,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -441,7 +447,7 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
         <Button type="button" variant="outline" onClick={onCancel} className="w-full sm:w-auto">
           Cancel
         </Button>
-        <Button type="submit" className="w-full sm:w-auto">
+        <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isGeneratingBarcode}>
           {product ? 'Update Product' : 'Add Product'}
         </Button>
       </div>

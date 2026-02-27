@@ -40,6 +40,7 @@ export default function Racks() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingRack, setEditingRack] = useState<Rack | null>(null);
   const [selectedRackId, setSelectedRackId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [name, setName] = useState('');
   const [color, setColor] = useState(COLORS[0]);
   const [description, setDescription] = useState('');
@@ -51,30 +52,42 @@ export default function Racks() {
     : [];
 
   const handleAdd = async () => {
+    if (isSubmitting) return;
     if (!name.trim()) {
       toast.error('Rack name is required');
       return;
     }
-    const result = await addRack(name.trim(), color, description.trim() || undefined);
-    if (result) {
-      setIsAddOpen(false);
-      resetForm();
+    setIsSubmitting(true);
+    try {
+      const result = await addRack(name.trim(), color, description.trim() || undefined);
+      if (result) {
+        setIsAddOpen(false);
+        resetForm();
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleUpdate = async () => {
+    if (isSubmitting) return;
     if (!editingRack || !name.trim()) {
       toast.error('Rack name is required');
       return;
     }
-    const result = await updateRack(editingRack.id, {
-      name: name.trim(),
-      color,
-      description: description.trim() || null,
-    });
-    if (result) {
-      setEditingRack(null);
-      resetForm();
+    setIsSubmitting(true);
+    try {
+      const result = await updateRack(editingRack.id, {
+        name: name.trim(),
+        color,
+        description: description.trim() || null,
+      });
+      if (result) {
+        setEditingRack(null);
+        resetForm();
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -134,7 +147,13 @@ export default function Racks() {
               <DialogHeader>
                 <DialogTitle>Add New Rack</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleAdd();
+              }}
+            >
                 <div className="space-y-2">
                   <Label>Rack Name</Label>
                   <Input
@@ -171,11 +190,11 @@ export default function Racks() {
                   <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)} className="w-full sm:w-auto">
                     Cancel
                   </Button>
-                  <Button onClick={handleAdd} className="w-full sm:w-auto">
+                <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
                     Add Rack
                   </Button>
                 </div>
-              </div>
+            </form>
             </DialogContent>
           </Dialog>
         )}
@@ -186,11 +205,19 @@ export default function Racks() {
         {racks.map((rack) => {
           const rackProductCount = products.filter(p => p.rack_id === rack.id).length;
           return (
-            <Card 
-              key={rack.id} 
-              className="relative overflow-hidden group cursor-pointer hover:shadow-lg transition-shadow"
-              onClick={() => setSelectedRackId(rack.id)}
-            >
+          <Card 
+            key={rack.id} 
+            className="relative overflow-hidden group cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => setSelectedRackId(rack.id)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setSelectedRackId(rack.id);
+              }
+            }}
+          >
               <div
                 className="absolute inset-0 opacity-10"
                 style={{ backgroundColor: rack.color }}
@@ -388,7 +415,13 @@ export default function Racks() {
             <DialogHeader>
               <DialogTitle>Edit Rack</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleUpdate();
+              }}
+            >
               <div className="space-y-2">
                 <Label>Rack Name</Label>
                 <Input
@@ -427,11 +460,11 @@ export default function Racks() {
                 <Button type="button" variant="outline" onClick={() => setEditingRack(null)} className="w-full sm:w-auto">
                   Cancel
                 </Button>
-                <Button onClick={handleUpdate} className="w-full sm:w-auto">
+                <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
                   Save Changes
                 </Button>
               </div>
-            </div>
+            </form>
           </DialogContent>
         </Dialog>
       </div>

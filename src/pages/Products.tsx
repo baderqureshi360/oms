@@ -174,9 +174,15 @@ export default function Products() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   onKeyDown={(e) => {
-                    // Support barcode scanner (Enter key)
-                    if (e.key === 'Enter' && search.trim()) {
-                      handleBarcodeScan(search.trim());
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const trimmed = search.trim();
+                      if (!trimmed) return;
+                      if (/^\d+$/.test(trimmed)) {
+                        handleBarcodeScan(trimmed);
+                      } else {
+                        fetchProducts(trimmed, selectedRackId);
+                      }
                     }
                   }}
                   className="pl-10 h-10 sm:h-9"
@@ -554,7 +560,14 @@ export default function Products() {
 
         {/* Disable Confirmation */}
         <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-          <AlertDialogContent>
+          <AlertDialogContent
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleDisable();
+              }
+            }}
+          >
             <AlertDialogHeader>
               <AlertDialogTitle>Disable Product</AlertDialogTitle>
               <AlertDialogDescription>
@@ -572,7 +585,14 @@ export default function Products() {
 
         {/* Enable Confirmation */}
         <AlertDialog open={!!enableId} onOpenChange={() => setEnableId(null)}>
-          <AlertDialogContent>
+          <AlertDialogContent
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleEnable();
+              }
+            }}
+          >
             <AlertDialogHeader>
               <AlertDialogTitle>Enable Product</AlertDialogTitle>
               <AlertDialogDescription>

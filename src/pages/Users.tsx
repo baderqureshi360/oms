@@ -43,6 +43,7 @@ export default function Users() {
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<UserWithRole | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: '',
     phone: '',
@@ -105,7 +106,8 @@ export default function Users() {
   };
 
   const handleUpdate = async () => {
-    if (!editingUser) return;
+    if (!editingUser || isUpdating) return;
+    setIsUpdating(true);
 
     try {
       // Update profile
@@ -138,6 +140,8 @@ export default function Users() {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update user';
       console.error('Error updating user:', err);
       toast.error(errorMessage);
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -313,7 +317,13 @@ export default function Users() {
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleUpdate();
+            }}
+          >
             <div className="space-y-2">
               <Label>Full Name</Label>
               <Input
@@ -369,10 +379,10 @@ export default function Users() {
                 />
               </div>
             )}
-            <Button onClick={handleUpdate} className="w-full">
+            <Button type="submit" className="w-full" disabled={isUpdating}>
               Save Changes
             </Button>
-          </div>
+          </form>
         </DialogContent>
       </Dialog>
     </MainLayout>

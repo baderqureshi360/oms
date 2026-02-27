@@ -553,6 +553,12 @@ export default function SalesReport() {
                         placeholder="Enter Receipt ID (e.g. RCP-2023...)" 
                         value={returnReceiptId}
                         onChange={(e) => setReturnReceiptId(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && returnReceiptId.trim()) {
+                            e.preventDefault();
+                            handleFindSale();
+                          }
+                        }}
                       />
                    </div>
                    <Button onClick={handleFindSale} disabled={!returnReceiptId.trim()}>
@@ -562,7 +568,16 @@ export default function SalesReport() {
                 </div>
 
                 {foundSale && (
-                   <div className="space-y-6">
+                   <form
+                     className="space-y-6"
+                     onSubmit={(e) => {
+                       e.preventDefault();
+                       if (isProcessingReturn || isReturnExpired || Object.keys(returnSelection).length === 0) {
+                         return;
+                       }
+                       handleReturnSubmit();
+                     }}
+                   >
                       {/* Return Status Message */}
                       <div className={`p-4 rounded-lg border ${isReturnExpired ? 'bg-destructive/10 border-destructive/20 text-destructive' : 'bg-green-500/10 border-green-500/20 text-green-700'}`}>
                         <div className="flex items-center gap-2 font-semibold">
@@ -698,16 +713,16 @@ export default function SalesReport() {
                       )}
 
                       <div className="flex justify-end gap-3">
-                         <Button variant="outline" onClick={() => {
+                         <Button type="button" variant="outline" onClick={() => {
                             setFoundSale(null);
                             setReturnReceiptId('');
                             setReturnSelection({});
                          }}>Cancel</Button>
-                         <Button onClick={handleReturnSubmit} disabled={isProcessingReturn || Object.keys(returnSelection).length === 0 || isReturnExpired}>
+                         <Button type="submit" disabled={isProcessingReturn || Object.keys(returnSelection).length === 0 || isReturnExpired}>
                             {isProcessingReturn ? 'Processing...' : 'Confirm Return'}
                          </Button>
                       </div>
-                   </div>
+                   </form>
                 )}
              </div>
           </div>
