@@ -15,15 +15,41 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export default function Dashboard() {
   const { products, totalCount, getProductStock, getExpiringBatches, getExpiredBatches } = useProducts();
   const { sales } = useSales();
   const today = startOfToday();
   const [dismissedExpiredAlert, setDismissedExpiredAlert] = useState(false);
+  const [expiredDetailsOpen, setExpiredDetailsOpen] = useState(false);
+  const [lowStockDetailsOpen, setLowStockDetailsOpen] = useState(false);
+  const [expiringDetailsOpen, setExpiringDetailsOpen] = useState(false);
 
   const expiringBatches = getExpiringBatches(30);
   const expiredBatches = getExpiredBatches();
+
+  const lowStockDetailProducts = useMemo(() => {
+    const safeProducts = Array.isArray(products) ? products.filter(p => p.is_active !== false) : [];
+    return safeProducts.filter((p) => {
+      if (!p || !p.id) return false;
+      const stock = getProductStock(p.id);
+      return stock <= (p.min_stock || 0);
+    });
+  }, [products, getProductStock]);
+
+  const formatDateSafe = (dateString?: string | null) => {
+    if (!dateString) return 'N/A';
+    const parsed = parseISO(dateString);
+    if (isNaN(parsed.getTime())) return 'N/A';
+    return format(parsed, 'MMM d, yyyy');
+  };
 
   const stats = useMemo(() => {
     const safeSales = Array.isArray(sales) ? sales : [];
@@ -119,6 +145,14 @@ export default function Dashboard() {
                   {stats.expiredCount} batch(es) have expired and cannot be sold. Consider disposing of expired stock.
                 </p>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExpiredDetailsOpen(true)}
+                className="border-destructive/40 text-destructive hover:bg-destructive/10"
+              >
+                View Details
+              </Button>
             </div>
             <button
               onClick={() => setDismissedExpiredAlert(true)}
@@ -138,6 +172,14 @@ export default function Dashboard() {
                 <AlertTriangle className="w-5 h-5 text-warning" />
               </div>
               <h2 className="text-base sm:text-lg font-semibold text-foreground">Low Stock Alert</h2>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLowStockDetailsOpen(true)}
+                className="ml-auto"
+              >
+                View All
+              </Button>
             </div>
             {stats.lowStockProducts.length > 0 ? (
               <div className="overflow-x-auto">
@@ -186,6 +228,14 @@ export default function Dashboard() {
                 <Clock className="w-5 h-5 text-destructive" />
               </div>
               <h2 className="text-base sm:text-lg font-semibold text-foreground">Expiring Soon (30 days)</h2>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExpiringDetailsOpen(true)}
+                className="ml-auto"
+              >
+                View All
+              </Button>
             </div>
             {expiringBatches.length > 0 ? (
               <div className="overflow-x-auto">
@@ -288,6 +338,137 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      <Dialog open={expiredDetailsOpen} onOpenChange={setExpiredDetailsOpen}>
+        <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Expired Stock Details</DialogTitle>
+          </DialogHeader>
+          {expiredBatches.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Batch Number</TableHead>
+                    <TableHead className="text-right">Expiry Date</TableHead>
+                    <TableHead className="text-right">Quantity Remaining</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {expiredBatches.map((batch) => {
+                    if (!batch || !batch.id) return null;
+                    const product = products.find(p => p && p.id === batch.product_id);
+                    return (
+                      <TableRow key={batch.id}>
+                        <TableCell className="font-medium">
+                          {product?.name || 'Unknown Product'}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground font-mono">
+                          {batch.batch_number || 'N/A'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant="destructive">{formatDateSafe(batch.expiry_date)}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {batch.quantity ?? 0}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">No expired items found.</div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={lowStockDetailsOpen} onOpenChange={setLowStockDetailsOpen}>
+        <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Low Stock Details</DialogTitle>
+          </DialogHeader>
+          {lowStockDetailProducts.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead className="text-right">Current Stock</TableHead>
+                    <TableHead className="text-right">Minimum Stock Level</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lowStockDetailProducts.map((product) => {
+                    if (!product || !product.id) return null;
+                    return (
+                      <TableRow key={product.id}>
+                        <TableCell className="font-medium">
+                          {product.name || 'Unknown Product'} {product.strength && <span className="text-primary text-xs">{product.strength}</span>}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant="destructive">{getProductStock(product.id)}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {product.min_stock ?? 0}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">All stock levels are sufficient.</div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={expiringDetailsOpen} onOpenChange={setExpiringDetailsOpen}>
+        <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Expiring Soon (30 Days)</DialogTitle>
+          </DialogHeader>
+          {expiringBatches.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead className="text-right">Expiry Date</TableHead>
+                    <TableHead className="text-right">Quantity Remaining</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {expiringBatches.map((batch) => {
+                    if (!batch || !batch.id) return null;
+                    const product = products.find(p => p && p.id === batch.product_id);
+                    return (
+                      <TableRow key={batch.id}>
+                        <TableCell className="font-medium">
+                          {product?.name || 'Unknown Product'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge className="bg-warning text-warning-foreground">
+                            {formatDateSafe(batch.expiry_date)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {batch.quantity ?? 0}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">No items expiring within 30 days.</div>
+          )}
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
