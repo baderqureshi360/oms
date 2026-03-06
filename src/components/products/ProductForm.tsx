@@ -116,6 +116,8 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
     manufacturer: product?.manufacturer || '',
     salt_formula: product?.salt_formula || '',
     rack_id: initialRackId,
+    packaging_type: product?.packaging_type || 'strip_only',
+    strips_per_box: product?.strips_per_box?.toString() || '',
   });
 
   // Update form when product changes (for editing or scanned barcode)
@@ -132,6 +134,8 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
         manufacturer: product.manufacturer || '',
         salt_formula: product.salt_formula || '',
         rack_id: newRackId,
+        packaging_type: product.packaging_type || 'strip_only',
+        strips_per_box: product.strips_per_box?.toString() || '',
       });
     } else {
       // Reset form for new product
@@ -145,6 +149,8 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
         manufacturer: '',
         salt_formula: '',
         rack_id: '',
+        packaging_type: 'strip_only',
+        strips_per_box: '',
       });
     }
   }, [product]);
@@ -186,6 +192,16 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
     if (isNaN(minStock) || minStock < 0) {
       toast.error('Minimum stock must be a valid number (0 or greater)');
       return;
+    }
+    
+    // Validate packaging configuration
+    const packagingType = formData.packaging_type || 'strip_only';
+    const stripsPerBox = formData.strips_per_box ? parseInt(formData.strips_per_box) : null;
+    if ((packagingType === 'box_only' || packagingType === 'box_strip')) {
+      if (!stripsPerBox || isNaN(stripsPerBox) || stripsPerBox <= 0) {
+        toast.error('Strips Per Box must be greater than 0');
+        return;
+      }
     }
     
     // Auto-generate barcode if none provided
@@ -232,6 +248,8 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
         manufacturer: formData.manufacturer?.trim() || null,
         salt_formula: formData.salt_formula?.trim() || null,
         rack_id: formData.rack_id,
+        packaging_type: packagingType,
+        strips_per_box: stripsPerBox,
       });
     } finally {
       setIsSubmitting(false);
@@ -425,6 +443,39 @@ export function ProductForm({ product, onSubmit, onCancel }: ProductFormProps) {
               onChange={(e) => setFormData({ ...formData, min_stock: e.target.value })}
               required
             />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="packaging_type">Packaging Type</Label>
+            <Select
+              value={formData.packaging_type}
+              onValueChange={(value) => setFormData({ ...formData, packaging_type: value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select packaging" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="box_only">Box Only</SelectItem>
+                <SelectItem value="strip_only">Strip Only</SelectItem>
+                <SelectItem value="box_strip">Box + Strip</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="strips_per_box">Strips Per Box</Label>
+            <Input
+              id="strips_per_box"
+              type="number"
+              value={formData.strips_per_box}
+              onChange={(e) => setFormData({ ...formData, strips_per_box: e.target.value })}
+              placeholder="e.g., 10"
+              disabled={formData.packaging_type === 'strip_only'}
+            />
+            <p className="text-xs text-muted-foreground">
+              Required when selling boxes. Determines automatic strip price.
+            </p>
           </div>
         </div>
 

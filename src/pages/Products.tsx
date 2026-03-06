@@ -33,7 +33,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useProducts, Product } from '@/hooks/useProducts';
 import { useRacks } from '@/hooks/useRacks';
-import { Plus, Search, Pencil, Trash2, Package, Layers, X } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Package, Layers, X, Eye } from 'lucide-react';
 import { format, parseISO, isBefore, addDays, startOfToday } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -47,6 +47,7 @@ export default function Products() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [enableId, setEnableId] = useState<string | null>(null);
   const [viewBatchesId, setViewBatchesId] = useState<string | null>(null);
+  const [viewDetailsId, setViewDetailsId] = useState<string | null>(null);
   const [scannedBarcode, setScannedBarcode] = useState<string>('');
 
   const handleBarcodeScan = (barcode: string) => {
@@ -149,6 +150,12 @@ export default function Products() {
 
   const viewingProduct = products.find(p => p.id === viewBatchesId);
   const viewingBatches = viewBatchesId ? getProductBatches(viewBatchesId) : [];
+
+  const detailsProduct = products.find(p => p.id === viewDetailsId);
+  const detailsBatches = viewDetailsId ? getProductBatches(viewDetailsId) : [];
+  const detailsLatestBatch = detailsBatches
+    .slice()
+    .sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime())[0];
 
   return (
     <MainLayout>
@@ -264,6 +271,15 @@ export default function Products() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        onClick={() => setViewDetailsId(product.id)}
+                        title="View Details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="h-8 w-8"
                         onClick={() => handleEdit(product)}
                       >
@@ -334,6 +350,15 @@ export default function Products() {
                     >
                       <Layers className="w-3 h-3 mr-1" />
                       {batches.length} batches
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setViewDetailsId(product.id)}
+                      className="text-xs"
+                    >
+                      <Eye className="w-3 h-3 mr-1" />
+                      View details
                     </Button>
                   </div>
                 </div>
@@ -424,6 +449,16 @@ export default function Products() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setViewDetailsId(product.id)}
+                            className="hover:bg-primary/10 hover:text-primary"
+                            title="View Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                            <span className="sr-only">View Details</span>
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -554,6 +589,103 @@ export default function Products() {
                   )}
                 </TableBody>
               </Table>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* View Product Details Dialog */}
+        <Dialog open={!!viewDetailsId} onOpenChange={() => setViewDetailsId(null)}>
+          <DialogContent className="max-w-3xl w-[95vw] sm:w-auto max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Product Details</DialogTitle>
+            </DialogHeader>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <h3 className="font-semibold text-lg border-b pb-2">Product</h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <span className="text-muted-foreground">Product Name:</span>
+                  <span className="font-medium">{detailsProduct?.name || 'N/A'}</span>
+
+                  <span className="text-muted-foreground">Date Added:</span>
+                  <span>{detailsProduct?.created_at ? format(parseISO(detailsProduct.created_at), 'MMM d, yyyy') : 'N/A'}</span>
+
+                  <span className="text-muted-foreground">Total Stock:</span>
+                  <span className="font-medium">{detailsProduct ? getProductStock(detailsProduct.id) : 0}</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="font-semibold text-lg border-b pb-2">Latest Batch</h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <span className="text-muted-foreground">Batch Number:</span>
+                  <span className="font-mono">{detailsLatestBatch?.batch_number || 'N/A'}</span>
+
+                  <span className="text-muted-foreground">Purchase Price:</span>
+                  <span>{detailsLatestBatch ? formatPKR(detailsLatestBatch.cost_price) : 'N/A'}</span>
+
+                  <span className="text-muted-foreground">Sale Price:</span>
+                  <span>{detailsLatestBatch ? formatPKR(detailsLatestBatch.selling_price) : 'N/A'}</span>
+
+                  <span className="text-muted-foreground">Quantity:</span>
+                  <span>{detailsLatestBatch ? detailsLatestBatch.quantity : 'N/A'}</span>
+
+                  <span className="text-muted-foreground">Expiry Date:</span>
+                  <span>
+                    {detailsLatestBatch?.expiry_date
+                      ? format(parseISO(detailsLatestBatch.expiry_date), 'MMM d, yyyy')
+                      : 'N/A'}
+                  </span>
+
+                  <span className="text-muted-foreground">Supplier:</span>
+                  <span>{detailsLatestBatch?.supplier || 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3 mt-6">
+              <h3 className="font-semibold text-lg border-b pb-2">All Batches</h3>
+              <div className="border rounded-md overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Batch No.</TableHead>
+                      <TableHead className="text-right">Qty</TableHead>
+                      <TableHead className="text-right">Purchase</TableHead>
+                      <TableHead className="text-right">Sale</TableHead>
+                      <TableHead>Expiry</TableHead>
+                      <TableHead>Supplier</TableHead>
+                      <TableHead>Date</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {detailsBatches
+                      .slice()
+                      .sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime())
+                      .map((batch) => (
+                        <TableRow key={batch.id}>
+                          <TableCell className="font-mono text-sm">{batch.batch_number || 'N/A'}</TableCell>
+                          <TableCell className="text-right font-medium">{batch.quantity ?? 0}</TableCell>
+                          <TableCell className="text-right">{formatPKR(batch.cost_price ?? 0)}</TableCell>
+                          <TableCell className="text-right">{formatPKR(batch.selling_price ?? 0)}</TableCell>
+                          <TableCell>
+                            {batch.expiry_date ? format(parseISO(batch.expiry_date), 'MMM d, yyyy') : 'N/A'}
+                          </TableCell>
+                          <TableCell>{batch.supplier || 'N/A'}</TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {batch.purchase_date ? format(new Date(batch.purchase_date), 'MMM d, yyyy') : 'N/A'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    {detailsBatches.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          No batches found. Add stock through Stock Purchases.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           </DialogContent>
         </Dialog>

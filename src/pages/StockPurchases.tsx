@@ -47,19 +47,30 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useProducts, type Product, type StockBatch } from '@/hooks/useProducts';
-import { Plus, PackagePlus, Package, Layers, Pencil } from 'lucide-react';
+import { useSuppliers } from '@/hooks/useSuppliers';
+import { StockPurchaseDetails } from '@/components/stock/StockPurchaseDetails';
+import { Plus, PackagePlus, Package, Layers, Pencil, Eye } from 'lucide-react';
 import { format, parseISO, isBefore, addDays, startOfToday } from 'date-fns';
 import { toast } from 'sonner';
 
 export default function StockPurchases() {
   const { products, batches, getProductStock, addBatch, updateBatch, searchProducts } = useProducts();
+  const { suppliers, fetchSuppliers, addSupplier } = useSuppliers();
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [selectedBatch, setSelectedBatch] = useState<StockBatch | null>(null);
   const [editingBatch, setEditingBatch] = useState<StockBatch | null>(null);
   const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
   type PendingBatchUpdate = {
     product_id: string;
     quantity: number;
     cost_price: number;
+    selling_price: number;
+    expiry_date: string;
+    supplier: string | null;
+    supplier_id?: string | null;
+    supplier_contact?: string | null;
+    supplier_address?: string | null;
   };
 
   type BatchWithProduct = StockBatch & {
@@ -85,9 +96,16 @@ export default function StockPurchases() {
     sellingPrice: '',
     expiryDate: '',
     supplier: '',
+    supplierContact: '',
+    supplierAddress: '',
   });
 
   const today = startOfToday();
+
+  // Load suppliers on mount
+  useEffect(() => {
+    fetchSuppliers();
+  }, [fetchSuppliers]);
 
   // Perform server-side search or use default products
   useEffect(() => {
@@ -146,6 +164,8 @@ export default function StockPurchases() {
       sellingPrice: batch.selling_price.toString(),
       expiryDate: batch.expiry_date,
       supplier: batch.supplier || '',
+      supplierContact: batch.supplier_contact || '',
+      supplierAddress: batch.supplier_address || '',
     });
     setSelectedProductObj(product || null);
     setIsFormOpen(true);
@@ -178,6 +198,11 @@ export default function StockPurchases() {
       return;
     }
 
+    if (!formData.supplier.trim()) {
+      toast.error('Supplier name is required');
+      return;
+    }
+
     const expiryDate = parseISO(formData.expiryDate);
     if (isBefore(expiryDate, today)) {
       toast.error('Cannot add expired stock');
@@ -204,40 +229,91 @@ export default function StockPurchases() {
     }
 
     const resolvedProductId = selectedProduct.id;
-
-    if (editingBatch) {
-      setPendingUpdate({
-        product_id: resolvedProductId,
-        quantity,
-        cost_price: costPrice,
-      });
-      setShowUpdateConfirm(true);
-      return;
-    }
     setIsSubmitting(true);
+
     try {
-      const result = await addBatch({
+      // Handle Supplier Logic
+      let supplierId: string | null = null;
+      const supplierName = formData.supplier.trim();
+      
+      if (supplierName) {
+        const existingSupplier = suppliers.find(s => s.name.toLowerCase() === supplierName.toLowerCase());
+        if (existingSupplier) {
+          supplierId = existingSupplier.id;
+        } else {
+          // Create new supplier
+          const newSupplier = await addSupplier({
+            name: supplierName,
+            contact_number: formData.supplierContact || null,
+            address: formData.supplierAddress || null,
+          });
+          if (newSupplier) {
+            supplierId = newSupplier.id;
+          }
+        }
+      }
+
+      // Convert quantity to strips if product supports boxes
+      const packagingType = selectedProduct.packaging_type || 'strip_only';
+      const stripsPerBox = Number(selectedProduct.strips_per_box || 0);
+      const storedQuantity = (packagingType === 'box_only' || packagingType === 'box_strip') && stripsPerBox > 0
+        ? quantity * stripsPerBox
+        : quantity;
+
+      const commonData = {
         product_id: resolvedProductId,
-        batch_number: formData.batchNumber.trim(),
-        quantity,
+        quantity: storedQuantity,
         cost_price: costPrice,
         selling_price: sellingPrice,
         expiry_date: formData.expiryDate,
+        supplier: supplierName,
+        supplier_id: supplierId,
+        supplier_contact: formData.supplierContact || null,
+        supplier_address: formData.supplierAddress || null,
+      };
+
+      if (editingBatch) {
+        setPendingUpdate(commonData);
+        setShowUpdateConfirm(true);
+        // Do not return here, just set submitting to false so user can click 'Update' in modal
+        // But wait, the modal uses a separate action 'handleConfirmUpdate'
+        // So we need to stop submitting here.
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Add new batch
+      const result = await addBatch({
+        ...commonData,
+        batch_number: formData.batchNumber.trim(),
         purchase_date: new Date().toISOString().split('T')[0],
-        supplier: formData.supplier || null,
       });
 
       if (result) {
         toast.success('Stock purchase recorded', {
-          description: `Added ${quantity} units of ${selectedProduct.name} (Batch: ${formData.batchNumber})`,
+          description: `Added ${storedQuantity} strips of ${selectedProduct.name} (Batch: ${formData.batchNumber})`,
         });
 
-        setFormData({ productId: '', batchNumber: '', quantity: '', costPrice: '', sellingPrice: '', expiryDate: '', supplier: '' });
+        setFormData({ 
+          productId: '', 
+          batchNumber: '', 
+          quantity: '', 
+          costPrice: '', 
+          sellingPrice: '', 
+          expiryDate: '', 
+          supplier: '',
+          supplierContact: '',
+          supplierAddress: '',
+        });
         setSelectedProductObj(null);
         setIsFormOpen(false);
       }
     } finally {
-      setIsSubmitting(false);
+      // Only reset submitting if NOT showing confirm dialog (editing)
+      // If editing, handleConfirmUpdate will handle submitting state
+      if (!editingBatch) {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -266,24 +342,36 @@ export default function StockPurchases() {
     (a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime()
   );
 
+  const selectedPurchaseItems = useMemo(() => {
+    if (!selectedBatch) return [];
+    const supplierKey = selectedBatch.supplier_id || selectedBatch.supplier || '';
+    return sortedBatches
+      .filter((b) => {
+        const bSupplierKey = b.supplier_id || b.supplier || '';
+        return b.purchase_date === selectedBatch.purchase_date && bSupplierKey === supplierKey;
+      })
+      .map((b) => ({ batch: b, product: getBatchProduct(b) }));
+  }, [selectedBatch, sortedBatches, getBatchProduct]);
+
   const filteredBatches = useMemo(() => {
-    if (!debouncedTableSearch) return sortedBatches;
+    let result = sortedBatches;
+
+    if (!debouncedTableSearch) return result;
     const searchLower = debouncedTableSearch.toLowerCase().trim();
-    const isNumeric = /^\d+$/.test(searchLower);
     
-    return sortedBatches.filter((batch) => {
+    return result.filter((batch) => {
        const product = getBatchProduct(batch);
+       const batchNumber = (batch.batch_number || '').toLowerCase();
+       
+       // Check batch number first
+       if (batchNumber.includes(searchLower)) return true;
+       
        if (!product) return false;
 
-       if (isNumeric) {
-         const barcode = product.barcode?.toLowerCase() || '';
-         if (!barcode) return false;
-         return barcode.startsWith(searchLower);
-       } else {
-         const name = product.name?.toLowerCase() || '';
-         if (!name) return false;
-         return name.startsWith(searchLower);
-       }
+       const barcode = (product.barcode || '').toLowerCase();
+       const name = (product.name || '').toLowerCase();
+       
+       return barcode.includes(searchLower) || name.includes(searchLower);
     });
   }, [sortedBatches, debouncedTableSearch, getBatchProduct]);
 
@@ -342,7 +430,7 @@ export default function StockPurchases() {
               value={tableSearch}
               onChange={setTableSearch}
               onEnter={(value) => setTableSearch(value)}
-              placeholder="Search batches by product name or barcode..."
+              placeholder="Search by product name, barcode, or batch number..."
               autoFocus={false}
             />
         </div>
@@ -404,7 +492,7 @@ export default function StockPurchases() {
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead>Expiry</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead className="w-[50px]"></TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -431,16 +519,32 @@ export default function StockPurchases() {
                     <TableCell className="text-muted-foreground">
                       {format(new Date(batch.purchase_date), 'MMM d, yyyy')}
                     </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEditClick(batch)}
-                        className="h-8 w-8 text-muted-foreground hover:text-primary"
-                      >
-                        <Pencil className="h-4 w-4" />
-                        <span className="sr-only">Edit</span>
-                      </Button>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setSelectedBatch(batch);
+                            setIsDetailsOpen(true);
+                          }}
+                          className="h-8 w-8 text-muted-foreground hover:text-primary"
+                          title="View Details"
+                        >
+                          <Eye className="h-4 w-4" />
+                          <span className="sr-only">View Details</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditClick(batch)}
+                          className="h-8 w-8 text-muted-foreground hover:text-primary"
+                          title="Edit"
+                        >
+                          <Pencil className="h-4 w-4" />
+                          <span className="sr-only">Edit</span>
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -615,16 +719,74 @@ export default function StockPurchases() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="supplier">Supplier {editingBatch ? '(Read-only)' : ''}</Label>
-                <Input
-                  id="supplier"
-                  value={formData.supplier}
-                  onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
-                  placeholder="Leave empty to use default supplier"
-                  readOnly={!!editingBatch}
-                  className={editingBatch ? "bg-muted" : ""}
-                />
+              <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
+                <h3 className="font-medium text-sm">Supplier Details</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="supplier">Supplier Name {editingBatch ? '(Read-only)' : '*'}</Label>
+                    <div className="relative">
+                      <Input
+                        id="supplier"
+                        value={formData.supplier}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData(prev => {
+                            // Auto-fill if supplier exists
+                            const existing = suppliers.find(s => s.name.toLowerCase() === val.toLowerCase());
+                            if (existing) {
+                              return {
+                                ...prev,
+                                supplier: val,
+                                supplierContact: existing.contact_number || '',
+                                supplierAddress: existing.address || '',
+                              };
+                            }
+                            return { ...prev, supplier: val };
+                          });
+                        }}
+                        placeholder="Select or enter supplier name"
+                        readOnly={!!editingBatch}
+                        className={editingBatch ? "bg-muted" : ""}
+                        list="suppliers-list"
+                        required
+                      />
+                      <datalist id="suppliers-list">
+                        {suppliers.map(s => (
+                          <option key={s.id} value={s.name} />
+                        ))}
+                      </datalist>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="supplierContact">Contact Number</Label>
+                    <Input
+                      id="supplierContact"
+                      type="tel"
+                      value={formData.supplierContact}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        // Allow only numeric input
+                        if (val === '' || /^\d*$/.test(val)) {
+                           setFormData(prev => ({ ...prev, supplierContact: val }));
+                        }
+                      }}
+                      placeholder="Numeric only"
+                      readOnly={!!editingBatch}
+                      className={editingBatch ? "bg-muted" : ""}
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="supplierAddress">Address (Optional)</Label>
+                    <Input
+                      id="supplierAddress"
+                      value={formData.supplierAddress}
+                      onChange={(e) => setFormData({ ...formData, supplierAddress: e.target.value })}
+                      placeholder="Supplier address"
+                      readOnly={!!editingBatch}
+                      className={editingBatch ? "bg-muted" : ""}
+                    />
+                  </div>
+                </div>
               </div>
 
               {formData.quantity && formData.costPrice && (
@@ -671,6 +833,13 @@ export default function StockPurchases() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <StockPurchaseDetails
+          batch={selectedBatch}
+          product={selectedBatch ? getBatchProduct(selectedBatch) : undefined}
+          items={selectedPurchaseItems}
+          open={isDetailsOpen}
+          onOpenChange={setIsDetailsOpen}
+        />
       </div>
     </MainLayout>
   );

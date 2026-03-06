@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 
@@ -11,15 +11,17 @@ interface UnifiedSearchBarProps {
   autoFocus?: boolean;
 }
 
-export function UnifiedSearchBar({
+export const UnifiedSearchBar = forwardRef<HTMLInputElement, UnifiedSearchBarProps>(({
   value,
   onChange,
   onEnter,
   className,
   placeholder = "Search product or scan barcode...",
   autoFocus = true,
-}: UnifiedSearchBarProps) {
+}, ref) => {
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => inputRef.current as HTMLInputElement);
 
   useEffect(() => {
     if (autoFocus) {
@@ -32,10 +34,6 @@ export function UnifiedSearchBar({
       onEnter(value);
     }
   };
-
-  // Auto-detect input type (numeric vs text) for placeholder or visual feedback could be added here
-  // but the requirement is just to handle the logic. 
-  // The visual feedback is not explicitly requested, but "No design changes" suggests keeping it simple.
 
   return (
     <div className={`relative ${className || ''}`}>
@@ -51,4 +49,6 @@ export function UnifiedSearchBar({
       />
     </div>
   );
-}
+});
+
+UnifiedSearchBar.displayName = "UnifiedSearchBar";

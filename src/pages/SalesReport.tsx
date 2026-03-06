@@ -311,7 +311,7 @@ export default function SalesReport() {
          rows.push([
            ret.receipt_number, // Using return receipt or original sale ID? "Sale ID" column implies Sale ID.
            retDate,
-           item.sale_item?.product_name || 'Unknown', // Need product name, fetch from sale_item or products? sale_item doesn't have name in relation? 
+           item.sale_item?.product_name || 'N/A', // Need product name, fetch from sale_item or products? sale_item doesn't have name in relation? 
            // sale_item in useSales query doesn't select product_name.
            // Wait, sale_item has product_id. I can look up in batches or products if loaded?
            // 'batches' from useProducts contains some info, but maybe not all names.
@@ -500,7 +500,7 @@ export default function SalesReport() {
                           <div className="space-y-1">
                             {sale.items?.map((item, idx: number) => (
                               <div key={idx} className="text-sm">
-                                <span className="font-medium">{item.product_name || 'Unknown'}</span>
+                                <span className="font-medium">{item.product_name || 'N/A'}</span>
                                 <span className="text-muted-foreground"> × {item.quantity || 0}</span>
                                 <span className="text-xs text-muted-foreground ml-2">
                                   (Profit: {formatPKR(calculateItemProfit(item))})
@@ -612,7 +612,7 @@ export default function SalesReport() {
                             </div>
                             <div>
                                <p className="text-xs text-muted-foreground">Cashier</p>
-                               <p className="font-medium">{(foundSale.cashier_id) ? 'Admin' : 'Unknown'}</p>
+                               <p className="font-medium">{(foundSale.cashier_id) ? 'Admin' : 'N/A'}</p>
                             </div>
                          </div>
                       </div>
@@ -699,7 +699,7 @@ export default function SalesReport() {
                                     <TableRow key={item.id}>
                                       <TableCell>{format(new Date(ret.created_at), 'MMM d, yyyy')}</TableCell>
                                       <TableCell>{ret.receipt_number}</TableCell>
-                                      <TableCell>{originalItem?.product_name || 'Unknown'}</TableCell>
+                                      <TableCell>{originalItem?.product_name || 'N/A'}</TableCell>
                                       <TableCell>{item.quantity}</TableCell>
                                       <TableCell className="text-destructive">-{formatPKR(amountDeducted)}</TableCell>
                                       <TableCell className="text-destructive">-{formatPKR(profitDeducted)}</TableCell>

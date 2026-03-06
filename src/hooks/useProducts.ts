@@ -13,6 +13,8 @@ export interface Product {
   manufacturer: string | null;
   salt_formula: string | null;
   rack_id: string | null;
+  packaging_type?: 'box_only' | 'strip_only' | 'box_strip' | null;
+  strips_per_box?: number | null;
   min_stock: number;
   is_active: boolean;
   created_by: string | null;
@@ -35,6 +37,9 @@ export interface StockBatch {
   expiry_date: string;
   purchase_date: string;
   supplier: string | null;
+  supplier_id?: string | null;
+  supplier_contact?: string | null;
+  supplier_address?: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -128,6 +133,9 @@ export function useProducts() {
           expiry_date,
           purchase_date,
           supplier,
+          supplier_id,
+          supplier_contact,
+          supplier_address,
           created_by,
           created_at,
           product:products(id, name, barcode)
@@ -288,6 +296,16 @@ export function useProducts() {
         return null;
       }
 
+      // Validate packaging configuration
+      const packagingType = product.packaging_type || 'strip_only';
+      const stripsPerBox = product.strips_per_box ?? null;
+      if ((packagingType === 'box_only' || packagingType === 'box_strip')) {
+        if (typeof stripsPerBox !== 'number' || isNaN(stripsPerBox) || stripsPerBox <= 0) {
+          toast.error('Strips Per Box must be greater than 0');
+          return null;
+        }
+      }
+
       // Auto-generate barcode if not provided
       let finalBarcode = product.barcode?.trim() || null;
       if (!finalBarcode) {
@@ -307,6 +325,11 @@ export function useProducts() {
         const trimmed = value.trim();
         return trimmed === '' ? null : trimmed;
       };
+      const toOptionalNumber = (value: number | null | undefined): number | null => {
+        if (value === null || value === undefined) return null;
+        const num = Number(value);
+        return isNaN(num) ? null : num;
+      };
 
       // Prepare payload - include salt_formula if provided (optional field)
       const payload = {
@@ -318,6 +341,8 @@ export function useProducts() {
         manufacturer: toOptionalString(product.manufacturer),
         rack_id: product.rack_id,
         min_stock: product.min_stock,
+        packaging_type: packagingType,
+        strips_per_box: toOptionalNumber(stripsPerBox),
         is_active: true, // New products are always active
         created_by: user.id,
       };
@@ -504,6 +529,13 @@ export function useProducts() {
         const saltFormula = toOptionalString(salt_formula);
         // Include even if null to allow clearing the field
         finalUpdateData.salt_formula = saltFormula;
+      }
+      if (updateData.packaging_type !== undefined) {
+        finalUpdateData.packaging_type = updateData.packaging_type || 'strip_only';
+      }
+      if (updateData.strips_per_box !== undefined) {
+        const num = updateData.strips_per_box === null ? null : Number(updateData.strips_per_box);
+        finalUpdateData.strips_per_box = isNaN(Number(num)) ? null : num;
       }
 
       // Select all columns including salt_formula

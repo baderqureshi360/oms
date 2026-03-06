@@ -197,7 +197,7 @@ export default function Dashboard() {
                     return (
                       <TableRow key={product.id}>
                         <TableCell className="font-medium">
-                          {product.name || 'Unknown Product'} {product.strength && <span className="text-primary text-xs">{product.strength}</span>}
+                          {product.name || 'N/A'} {product.strength && <span className="text-primary text-xs">{product.strength}</span>}
                         </TableCell>
                         <TableCell className="text-right">
                           <Badge variant="destructive">{getProductStock(product.id)}</Badge>
@@ -255,7 +255,7 @@ export default function Dashboard() {
                       <TableRow key={batch.id}>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{product?.name || 'Unknown Product'}</p>
+                            <p className="font-medium">{product?.name || batch.product_id || 'N/A'}</p>
                             <p className="text-xs text-muted-foreground font-mono">{batch.batch_number || 'N/A'}</p>
                           </div>
                         </TableCell>
@@ -362,7 +362,7 @@ export default function Dashboard() {
                     return (
                       <TableRow key={batch.id}>
                         <TableCell className="font-medium">
-                          {product?.name || 'Unknown Product'}
+                          {product?.name || batch.product_id || 'N/A'}
                         </TableCell>
                         <TableCell className="text-muted-foreground font-mono">
                           {batch.batch_number || 'N/A'}
@@ -406,7 +406,7 @@ export default function Dashboard() {
                     return (
                       <TableRow key={product.id}>
                         <TableCell className="font-medium">
-                          {product.name || 'Unknown Product'} {product.strength && <span className="text-primary text-xs">{product.strength}</span>}
+                          {product.name || 'N/A'} {product.strength && <span className="text-primary text-xs">{product.strength}</span>}
                         </TableCell>
                         <TableCell className="text-right">
                           <Badge variant="destructive">{getProductStock(product.id)}</Badge>
@@ -448,7 +448,7 @@ export default function Dashboard() {
                     return (
                       <TableRow key={batch.id}>
                         <TableCell className="font-medium">
-                          {product?.name || 'Unknown Product'}
+                          {product?.name || batch.product_id || 'N/A'}
                         </TableCell>
                         <TableCell className="text-right">
                           <Badge className="bg-warning text-warning-foreground">

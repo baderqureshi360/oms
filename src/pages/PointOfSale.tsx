@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { UnifiedSearchBar } from '@/components/ui/UnifiedSearchBar';
 import { CartItem } from '@/components/pos/CartItem';
@@ -35,9 +35,12 @@ import { format, parseISO, isBefore, addDays, startOfToday } from 'date-fns';
 interface CartItem {
   productId: string;
   productName: string;
-  quantity: number;
+  quantity: number; // displayed quantity in selected unit
   unitPrice: number;
   total: number;
+  sellingUnit: 'box' | 'strip';
+  stripsPerBox: number; // used for stock conversion and price calc
+  canChooseUnit: boolean;
 }
 
 export default function PointOfSale() {
@@ -49,6 +52,10 @@ export default function PointOfSale() {
   const [pendingPaymentMethod, setPendingPaymentMethod] = useState<'cash' | 'card' | 'mobile' | null>(null);
   const [search, setSearch] = useState('');
   const [dismissedExpiringAlert, setDismissedExpiringAlert] = useState(false);
+  const [selectedCartIndex, setSelectedCartIndex] = useState<number | null>(null);
+  const [activePaymentMethod, setActivePaymentMethod] = useState<'cash' | 'card' | 'mobile' | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const { products, getProductByBarcode, getProductStock, getAvailableBatches, getExpiringBatches, refetch, fetchProducts } = useProducts();
   const { processSale } = useSales();
   const { receiptData, setReceiptData } = useReceipt();
@@ -115,9 +122,24 @@ export default function PointOfSale() {
     
     // Get available batches once to avoid duplicate calls
     const availableBatchesForPrice = getAvailableBatches(product.id);
-    const unitPrice = availableBatchesForPrice.length > 0 
-      ? availableBatchesForPrice[0].selling_price 
-      : 0; // Fallback to 0 if no batches (shouldn't happen if stock > 0)
+    const boxPrice = availableBatchesForPrice.length > 0 
+      ? Number(availableBatchesForPrice[0].selling_price) 
+      : 0;
+    const packagingType = (product as ProductType).packaging_type || 'strip_only';
+    const stripsPerBox = Number((product as ProductType).strips_per_box || 0);
+    const canChooseUnit = packagingType === 'box_strip';
+    const defaultUnit: 'box' | 'strip' =
+      packagingType === 'box_only' ? 'box' :
+      packagingType === 'strip_only' ? 'strip' : 'strip';
+    const unitPrice = defaultUnit === 'strip' && (packagingType !== 'strip_only') && stripsPerBox > 0
+      ? (boxPrice / stripsPerBox)
+      : boxPrice;
+    if (!unitPrice || isNaN(unitPrice) || unitPrice <= 0) {
+      toast.error('Invalid price', {
+        description: `Price not set for ${product.name}. Please add a stock purchase with selling price.`,
+      });
+      return;
+    }
 
     if (existingItem) {
       setCart((prevCart) => prevCart.map((item) =>
@@ -125,6 +147,8 @@ export default function PointOfSale() {
           ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * item.unitPrice }
           : item
       ));
+      const index = cart.findIndex(item => item.productId === product.id);
+      setSelectedCartIndex(index);
     } else {
       // Check if earliest batch is expiring soon (within 30 days)
       if (availableBatchesForPrice.length > 0) {
@@ -143,8 +167,13 @@ export default function PointOfSale() {
         quantity: 1,
         unitPrice,
         total: unitPrice,
+        sellingUnit: defaultUnit,
+        stripsPerBox: stripsPerBox > 0 ? stripsPerBox : 1,
+        canChooseUnit,
       }]);
+      setSelectedCartIndex(cart.length);
     }
+    setActivePaymentMethod(null);
 
     // Show product details including rack location
     const productDetails = [
@@ -173,10 +202,14 @@ export default function PointOfSale() {
   };
 
   const handleUpdateQuantity = (productId: string, quantity: number) => {
-    const availableStock = getProductStock(productId);
-    if (quantity > availableStock) {
+    const cartItem = cart.find((i) => i.productId === productId);
+    const availableStockStrips = getProductStock(productId);
+    const requiredStrips = cartItem
+      ? (cartItem.sellingUnit === 'box' ? quantity * cartItem.stripsPerBox : quantity)
+      : quantity;
+    if (requiredStrips > availableStockStrips) {
       toast.error('Insufficient stock', {
-        description: `Only ${availableStock} units available (non-expired)`,
+        description: `Only ${availableStockStrips} strips available (non-expired)`,
       });
       return;
     }
@@ -188,21 +221,51 @@ export default function PointOfSale() {
     ));
   };
 
+  const handleChangeUnit = (productId: string, unit: 'box' | 'strip') => {
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+    const batches = getAvailableBatches(productId);
+    const boxPrice = batches.length > 0 ? Number(batches[0].selling_price) : 0;
+    const packagingType = (product as ProductType).packaging_type || 'strip_only';
+    const stripsPerBox = Number((product as ProductType).strips_per_box || 0) || 1;
+    const unitPrice = unit === 'strip' && (packagingType !== 'strip_only') && stripsPerBox > 0
+      ? (boxPrice / stripsPerBox)
+      : boxPrice;
+    setCart((prevCart) => prevCart.map((item) =>
+      item.productId === productId
+        ? {
+            ...item,
+            sellingUnit: unit,
+            unitPrice,
+            total: item.quantity * unitPrice,
+            stripsPerBox,
+          }
+        : item
+    ));
+  };
+
   const handleRemoveItem = (productId: string) => {
     setCart((prevCart) => prevCart.filter((item) => item.productId !== productId));
+    setActivePaymentMethod(null);
+    setSelectedCartIndex(null);
   };
 
   const handleClearCart = () => {
     setCart([]);
     setDiscountValue('');
+    setActivePaymentMethod(null);
+    setSelectedCartIndex(null);
     toast.info('Cart cleared');
   };
 
   const handleFinalizeOrder = async (paymentMethod: 'cash' | 'card' | 'mobile') => {
+    if (isProcessing) return;
     if (cart.length === 0) {
       toast.error('Cart is empty');
       return;
     }
+
+    setIsProcessing(true);
 
     // Calculate totals with discount
     const subtotal = Array.isArray(cart) ? cart.reduce((sum, item) => sum + (item?.total || 0), 0) : 0;
@@ -218,9 +281,9 @@ export default function PointOfSale() {
       const product = products.find(p => p.id === item.productId);
       return {
         product_id: item.productId,
-        product_name: item.productName,
+        product_name: `${item.productName} (${item.sellingUnit === 'box' ? 'Box' : 'Strip'})`,
         strength: product?.strength || null,
-        quantity: item.quantity,
+        quantity: item.sellingUnit === 'box' ? (item.quantity * item.stripsPerBox) : item.quantity,
         unit_price: item.unitPrice,
         total: item.total,
         available_stock: getProductStock(item.productId),
@@ -246,6 +309,7 @@ export default function PointOfSale() {
       });
       setShowConfirmation(false);
       setPendingPaymentMethod(null);
+      setIsProcessing(false);
       return;
     }
 
@@ -255,7 +319,13 @@ export default function PointOfSale() {
     // Set receipt data in context for printing
     const receiptNumber = result.sale?.receipt_number || '';
     setReceiptData({
-      items: [...cart],
+      items: cart.map(ci => ({
+        productId: ci.productId,
+        productName: `${ci.productName} (${ci.sellingUnit === 'box' ? 'Box' : 'Strip'})`,
+        quantity: ci.quantity,
+        unitPrice: ci.unitPrice,
+        total: ci.total,
+      })),
       total: subtotal,
       discount: discountAmount,
       finalTotal,
@@ -269,6 +339,14 @@ export default function PointOfSale() {
     setPendingPaymentMethod(null);
     setCart([]);
     setDiscountValue('');
+    setActivePaymentMethod(null);
+    setSelectedCartIndex(null);
+    setIsProcessing(false);
+
+    // Focus search input
+    setTimeout(() => {
+        searchInputRef.current?.focus();
+    }, 100);
     
     toast.success('Sale completed!', {
       description: `Payment received via ${paymentMethod}. Stock deducted using FEFO.`,
@@ -294,6 +372,110 @@ export default function PointOfSale() {
       window.print();
     }, 300);
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in an input (except for F-keys and Ctrl+Enter which might be global?)
+      const target = e.target as HTMLElement;
+      const isInputActive = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+
+      // F1-F3: Select Payment Method
+      if (e.key === 'F1') {
+        e.preventDefault();
+        setActivePaymentMethod('cash');
+        toast.info('Payment Method: Cash selected');
+        return;
+      }
+      if (e.key === 'F2') {
+        e.preventDefault();
+        setActivePaymentMethod('mobile');
+        toast.info('Payment Method: Mobile selected');
+        return;
+      }
+      if (e.key === 'F3') {
+        e.preventDefault();
+        setActivePaymentMethod('card');
+        toast.info('Payment Method: Card selected');
+        return;
+      }
+
+      // Enter: Complete Sale if Payment Method Selected
+      if (e.key === 'Enter') {
+        if (activePaymentMethod && !isProcessing) {
+           e.preventDefault();
+           handleFinalizeOrder(activePaymentMethod);
+           return;
+        }
+      }
+
+      // Ctrl + Enter: Complete Sale Immediately
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        if (!isProcessing) {
+             handleFinalizeOrder(activePaymentMethod || 'cash');
+        }
+        return;
+      }
+
+      // Esc: Cancel / Clear
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (cart.length > 0) {
+            if (window.confirm('Are you sure you want to clear the cart?')) {
+                handleClearCart();
+            }
+        } else if (activePaymentMethod) {
+            setActivePaymentMethod(null);
+        }
+        return;
+      }
+
+      // Navigation & Cart Actions (Only if not typing)
+      if (!isInputActive) {
+        if (e.key === 'Delete') {
+            if (selectedCartIndex !== null && cart[selectedCartIndex]) {
+                e.preventDefault();
+                handleRemoveItem(cart[selectedCartIndex].productId);
+            }
+        }
+        if (e.key === '+' || e.key === '=') {
+             if (selectedCartIndex !== null && cart[selectedCartIndex]) {
+                e.preventDefault();
+                handleUpdateQuantity(cart[selectedCartIndex].productId, cart[selectedCartIndex].quantity + 1);
+             }
+        }
+        if (e.key === '-' || e.key === '_') {
+             if (selectedCartIndex !== null && cart[selectedCartIndex]) {
+                e.preventDefault();
+                if (cart[selectedCartIndex].quantity > 1) {
+                    handleUpdateQuantity(cart[selectedCartIndex].productId, cart[selectedCartIndex].quantity - 1);
+                }
+             }
+        }
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (cart.length > 0) {
+                setSelectedCartIndex(prev => {
+                    if (prev === null) return cart.length - 1;
+                    return prev > 0 ? prev - 1 : prev;
+                });
+            }
+        }
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (cart.length > 0) {
+                setSelectedCartIndex(prev => {
+                    if (prev === null) return 0;
+                    return prev < cart.length - 1 ? prev + 1 : prev;
+                });
+            }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cart, selectedCartIndex, activePaymentMethod, isProcessing, handleFinalizeOrder, handleRemoveItem, handleUpdateQuantity, handleClearCart]);
 
   const subtotal = Array.isArray(cart) ? cart.reduce((sum, item) => sum + (item?.total || 0), 0) : 0;
   const discountAmount = discountValue 
@@ -334,6 +516,7 @@ export default function PointOfSale() {
 
             <div className="mb-4 sm:mb-6 flex-shrink-0">
               <UnifiedSearchBar
+                ref={searchInputRef}
                 value={search}
                 onChange={setSearch}
                 onEnter={handleSearchEnter}
@@ -439,14 +622,24 @@ export default function PointOfSale() {
                   <p className="text-sm text-center">Scan a product to get started</p>
                 </div>
               ) : (
-                Array.isArray(cart) && cart.map((item) => {
+                Array.isArray(cart) && cart.map((item, index) => {
                   if (!item || !item.productId) return null;
                   return (
                     <CartItem
                       key={item.productId}
-                      item={item}
+                      item={{
+                        productName: item.productName,
+                        unitPrice: item.unitPrice,
+                        quantity: item.quantity,
+                        total: item.total,
+                        sellingUnit: item.sellingUnit,
+                        canChooseUnit: item.canChooseUnit,
+                      }}
                       onUpdateQuantity={(qty) => handleUpdateQuantity(item.productId, qty)}
+                      onChangeUnit={(unit) => handleChangeUnit(item.productId, unit)}
                       onRemove={() => handleRemoveItem(item.productId)}
+                      isSelected={selectedCartIndex === index}
+                      onClick={() => setSelectedCartIndex(index)}
                     />
                   );
                 })
@@ -537,27 +730,27 @@ export default function PointOfSale() {
               <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 <Button
                   onClick={() => handleCheckout('cash')}
-                  disabled={cart.length === 0}
-                  className="btn-checkout bg-primary hover:bg-primary/90 h-12 sm:h-auto py-3 sm:py-4"
+                  disabled={cart.length === 0 || isProcessing}
+                  className={`btn-checkout bg-primary hover:bg-primary/90 h-12 sm:h-auto py-3 sm:py-4 ${activePaymentMethod === 'cash' ? 'ring-2 ring-offset-2 ring-primary' : ''}`}
                 >
                   <Banknote className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span className="text-xs">Cash</span>
-                </Button>
-                <Button
-                  onClick={() => handleCheckout('card')}
-                  disabled={cart.length === 0}
-                  className="btn-checkout bg-primary hover:bg-primary/90 h-12 sm:h-auto py-3 sm:py-4"
-                >
-                  <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span className="text-xs">Card</span>
+                  <span className="text-xs">Cash (F1)</span>
                 </Button>
                 <Button
                   onClick={() => handleCheckout('mobile')}
-                  disabled={cart.length === 0}
-                  className="btn-checkout bg-primary hover:bg-primary/90 h-12 sm:h-auto py-3 sm:py-4"
+                  disabled={cart.length === 0 || isProcessing}
+                  className={`btn-checkout bg-primary hover:bg-primary/90 h-12 sm:h-auto py-3 sm:py-4 ${activePaymentMethod === 'mobile' ? 'ring-2 ring-offset-2 ring-primary' : ''}`}
                 >
                   <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span className="text-xs">Mobile</span>
+                  <span className="text-xs">Mobile (F2)</span>
+                </Button>
+                <Button
+                  onClick={() => handleCheckout('card')}
+                  disabled={cart.length === 0 || isProcessing}
+                  className={`btn-checkout bg-primary hover:bg-primary/90 h-12 sm:h-auto py-3 sm:py-4 ${activePaymentMethod === 'card' ? 'ring-2 ring-offset-2 ring-primary' : ''}`}
+                >
+                  <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="text-xs">Card (F3)</span>
                 </Button>
               </div>
             </div>
